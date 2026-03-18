@@ -16,10 +16,37 @@ import { SettingsService } from "@main/services/SettingsService";
 import { Logger } from "@main/utils/logger";
 
 let mainWindow: BrowserWindow | null = null;
+let logger: Logger | null = null;
+
+function serializeError(error: unknown): Record<string, string> {
+  if (error instanceof Error) {
+    return {
+      message: error.message,
+      stack: error.stack ?? "",
+    };
+  }
+
+  return {
+    message: String(error),
+  };
+}
+
+function registerProcessLogging(activeLogger: Logger): void {
+  process.on("uncaughtException", (error) => {
+    activeLogger.error("Uncaught exception", serializeError(error));
+  });
+
+  process.on("unhandledRejection", (reason) => {
+    activeLogger.error("Unhandled rejection", serializeError(reason));
+  });
+}
 
 async function bootstrap(): Promise<void> {
   const userDataPath = app.getPath("userData");
-  const logger = new Logger(userDataPath);
+  logger = new Logger(userDataPath);
+  registerProcessLogging(logger);
+  logger.info("Application bootstrap started", { userDataPath });
+
   const databaseService = new DatabaseService(userDataPath, logger);
   databaseService.init();
 
@@ -50,8 +77,9 @@ async function bootstrap(): Promise<void> {
     settingsService,
   });
 
-  mainWindow = createMainWindow();
+  mainWindow = createMainWindow(logger);
   mainWindow.on("closed", () => {
+    logger?.info("Main window reference cleared");
     mainWindow = null;
   });
 }
@@ -65,13 +93,15 @@ app.whenReady().then(async () => {
   await bootstrap();
 
   app.on("activate", () => {
+    logger?.info("Application activate event");
     if (BrowserWindow.getAllWindows().length === 0) {
-      mainWindow = createMainWindow();
+      mainWindow = createMainWindow(logger ?? undefined);
     }
   });
 });
 
 app.on("window-all-closed", () => {
+  logger?.info("All windows closed");
   if (process.platform !== "darwin") {
     app.quit();
   }
