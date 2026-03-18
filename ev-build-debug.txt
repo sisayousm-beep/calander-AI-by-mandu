@@ -1,0 +1,208 @@
+2026-03-18T04:47:02.809Z vite:config using resolved config: {
+  plugins: [
+    'vite:build-metadata',
+    'vite:watch-package-data',
+    'vite:pre-alias',
+    'alias',
+    'vite:externalize-deps',
+    'vite:electron-main-preset-config',
+    'vite:node-asset',
+    'vite:node-worker',
+    'vite:module-path',
+    'vite:import-meta',
+    'vite:resolve',
+    'vite:html-inline-proxy',
+    'vite:css',
+    'vite:esbuild',
+    'vite:json',
+    'vite:wasm-helper',
+    'vite:worker',
+    'vite:asset',
+    'vite:wasm-fallback',
+    'vite:define',
+    'vite:css-post',
+    'vite:build-html',
+    'vite:worker-import-meta-url',
+    'vite:asset-import-meta-url',
+    'vite:force-systemjs-wrap-complete',
+    'commonjs',
+    'vite:data-uri',
+    'vite:dynamic-import-vars',
+    'vite:import-glob',
+    'vite:electron-main-resolved-config',
+    'vite:esm-shim',
+    'vite:build-import-analysis',
+    'vite:esbuild-transpile',
+    'vite:reporter',
+    'vite:load-fallback'
+  ],
+  resolve: {
+    mainFields: [ 'module', 'jsnext:main', 'jsnext' ],
+    conditions: [ 'node' ],
+    extensions: [
+      '.mjs',  '.js',
+      '.mts',  '.ts',
+      '.jsx',  '.tsx',
+      '.json'
+    ],
+    dedupe: [],
+    preserveSymlinks: false,
+    alias: [ [Object], [Object], [Object], [Object], [Object] ]
+  },
+  build: {
+    target: 'node20.14',
+    cssTarget: 'node20.14',
+    outDir: 'out/main',
+    assetsDir: 'chunks',
+    assetsInlineLimit: 4096,
+    cssCodeSplit: true,
+    sourcemap: true,
+    rollupOptions: {
+      external: [Array],
+      output: [Object],
+      input: 'C:\\Users\\ibmhw\\Desktop\\캘린더\\src\\main\\main.ts'
+    },
+    minify: false,
+    terserOptions: {},
+    write: true,
+    emptyOutDir: null,
+    copyPublicDir: false,
+    manifest: false,
+    lib: false,
+    ssr: true,
+    ssrManifest: false,
+    ssrEmitAssets: true,
+    reportCompressedSize: false,
+    chunkSizeWarningLimit: 500,
+    watch: null,
+    modulePreload: false,
+    commonjsOptions: { include: [Array], extensions: [Array] },
+    dynamicImportVarsOptions: { warnOnError: true, exclude: [Array] },
+    cssMinify: false
+  },
+  mode: 'production',
+  configFile: undefined,
+  define: {
+    'process.env': 'process.env',
+    'global.process.env': 'global.process.env',
+    'globalThis.process.env': 'globalThis.process.env'
+  },
+  envPrefix: [ 'MAIN_VITE_', 'VITE_' ],
+  publicDir: 'C:/Users/ibmhw/Desktop/캘린더/resources',
+  ssr: {
+    target: 'node',
+    noExternal: true,
+    optimizeDeps: { noDiscovery: true, esbuildOptions: [Object] }
+  },
+  configFileDependencies: [],
+  inlineConfig: {
+    plugins: [
+      [Object], [Object],
+      [Object], [Object],
+      [Object], [Object],
+      [Object], [Object]
+    ],
+    resolve: {
+      browserField: false,
+      mainFields: [Array],
+      conditions: [Array],
+      alias: [Object]
+    },
+    build: {
+      outDir: 'out/main',
+      target: 'node20.14',
+      assetsDir: 'chunks',
+      rollupOptions: [Object],
+      reportCompressedSize: false,
+      minify: false,
+      sourcemap: true,
+      copyPublicDir: false,
+      modulePreload: false,
+      ssr: true,
+      ssrEmitAssets: true
+    },
+    mode: 'production',
+    configFile: false,
+    define: {
+      'process.env': 'process.env',
+      'global.process.env': 'global.process.env',
+      'globalThis.process.env': 'globalThis.process.env'
+    },
+    envPrefix: [ 'MAIN_VITE_', 'VITE_' ],
+    publicDir: 'resources',
+    ssr: { noExternal: true }
+  },
+  root: 'C:/Users/ibmhw/Desktop/캘린더',
+  base: '/',
+  decodedBase: '/',
+  rawBase: '/',
+  cacheDir: 'C:/Users/ibmhw/Desktop/캘린더/node_modules/.vite',
+  command: 'build',
+  isWorker: false,
+  mainConfig: null,
+  bundleChain: [],
+  isProduction: true,
+  css: { lightningcss: undefined },
+  esbuild: { jsxDev: false },
+  server: {
+    preTransformRequests: true,
+    sourcemapIgnoreList: [Function: isInNodeModules$1],
+    middlewareMode: false,
+    fs: {
+      strict: true,
+      allow: [Array],
+      deny: [Array],
+      cachedChecks: undefined
+    }
+  },
+  preview: {
+    port: undefined,
+    strictPort: undefined,
+    host: undefined,
+    allowedHosts: undefined,
+    https: undefined,
+    open: undefined,
+    proxy: undefined,
+    cors: undefined,
+    headers: undefined
+  },
+  envDir: 'C:/Users/ibmhw/Desktop/캘린더',
+  env: { BASE_URL: '/', MODE: 'production', DEV: false, PROD: true },
+  assetsInclude: [Function: assetsInclude],
+  logger: {
+    hasWarned: false,
+    info: [Function: info],
+    warn: [Function: warn],
+    warnOnce: [Function: warnOnce],
+    error: [Function: error],
+    clearScreen: [Function: clearScreen],
+    hasErrorLogged: [Function: hasErrorLogged]
+  },
+  packageCache: Map(1) {
+    'fnpd_C:/Users/ibmhw/Desktop/캘린더' => {
+      dir: 'C:/Users/ibmhw/Desktop/캘린더',
+      data: [Object],
+      hasSideEffects: [Function: hasSideEffects],
+      webResolvedImports: {},
+      nodeResolvedImports: {},
+      setResolvedCache: [Function: setResolvedCache],
+      getResolvedCache: [Function: getResolvedCache]
+    },
+    set: [Function (anonymous)]
+  },
+  createResolver: [Function: createResolver],
+  optimizeDeps: {
+    holdUntilCrawlEnd: true,
+    esbuildOptions: { preserveSymlinks: false }
+  },
+  worker: { format: 'iife', plugins: '() => plugins', rollupOptions: {} },
+  appType: 'spa',
+  experimental: { importGlobRestoreExtension: false, hmrPartialAccept: false },
+  webSocketToken: 'pNBY-n96my_w',
+  additionalAllowedHosts: [],
+  getSortedPlugins: [Function: getSortedPlugins],
+  getSortedPluginHooks: [Function: getSortedPluginHooks]
+}
+[36mvite v5.4.21 [32mbuilding SSR bundle for production...[36m[39m
+transforming...
+[32m✓[39m 26 modules transformed.

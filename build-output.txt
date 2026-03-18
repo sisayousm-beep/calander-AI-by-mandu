@@ -1,0 +1,7 @@
+
+> calendar-ai-desktop@1.0.0 build
+> electron-vite build
+
+[36mvite v5.4.21 [32mbuilding SSR bundle for production...[36m[39m
+transforming...
+[32m✓[39m 26 modules transformed.
