@@ -15,7 +15,7 @@ export function createMainWindow(logger?: Logger): BrowserWindow {
     show: false,
     backgroundColor: "#111827",
     webPreferences: {
-      preload: join(currentDir, "../preload/index.js"),
+      preload: join(currentDir, "../preload/index.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
@@ -46,6 +46,22 @@ export function createMainWindow(logger?: Logger): BrowserWindow {
 
   window.webContents.on("did-finish-load", () => {
     logger?.info("Renderer finished load");
+  });
+
+  window.webContents.on("console-message", (_event, level, message, line, sourceId) => {
+    const payload = {
+      level,
+      message,
+      line,
+      sourceId,
+    };
+
+    if (level >= 2) {
+      logger?.error("Renderer console message", payload);
+      return;
+    }
+
+    logger?.info("Renderer console message", payload);
   });
 
   window.webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedUrl) => {

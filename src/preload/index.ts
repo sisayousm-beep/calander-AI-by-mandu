@@ -57,4 +57,10 @@ const api: CalendarApi = {
   },
 };
 
-contextBridge.exposeInMainWorld("calendarApi", api);
+try {
+  contextBridge.exposeInMainWorld("calendarApi", api);
+  console.info("[preload] calendarApi bridge exposed");
+} catch (error) {
+  console.error("[preload] failed to expose calendarApi bridge", error);
+  throw error;
+}

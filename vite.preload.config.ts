@@ -28,8 +28,8 @@ export default defineConfig({
     sourcemap: false,
     lib: {
       entry: resolve("src/preload/index.ts"),
-      formats: ["es"],
-      fileName: () => "index.js",
+      formats: ["cjs"],
+      fileName: () => "index.cjs",
     },
     rollupOptions: {
       external,

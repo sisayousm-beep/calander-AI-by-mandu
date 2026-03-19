@@ -41,5 +41,12 @@ export async function waitForCalendarApi(timeoutMs = 1500, pollIntervalMs = 50):
     }
   }
 
+  console.error("[renderer] calendarApi bridge missing after wait", {
+    hasWindow: typeof window !== "undefined",
+    hasCalendarApi: typeof window !== "undefined" ? "calendarApi" in window : false,
+    readyState: typeof document !== "undefined" ? document.readyState : "unknown",
+    href: typeof location !== "undefined" ? location.href : "unknown",
+  });
+
   throw new Error(bridgeMissingMessage);
 }
