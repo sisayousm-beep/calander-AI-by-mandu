@@ -15,7 +15,7 @@ export const useFormulaStore = create<FormulaStore>((set) => ({
   activeTargetType: "event",
   sampleContext: JSON.stringify(
     {
-      status: "planned",
+      status: "예정",
       startAt: new Date().toISOString(),
       endAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
       noteCount: 1,
@@ -25,7 +25,7 @@ export const useFormulaStore = create<FormulaStore>((set) => ({
     null,
     2,
   ),
-  lastExpression: "isDone()",
+  lastExpression: "완료인가()",
   lastResult: "",
   setActiveTargetType: (activeTargetType) => set({ activeTargetType }),
   setSampleContext: (sampleContext) => set({ sampleContext }),

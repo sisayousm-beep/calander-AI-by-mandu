@@ -1,5 +1,6 @@
 import type { DatabaseService } from "@main/services/DatabaseService";
 import { dayjs, endOfDayIso, withDateKeyTime } from "@shared/utils/date";
+import { isClosedEventStatus, normalizeEventStatus } from "@shared/utils/eventStatus";
 import {
   recurrenceRuleInputSchema,
   type EventRecord,
@@ -307,7 +308,7 @@ export class RecurrenceService {
 
     const startAt = override?.overrideType === "datetime" ? override.startAt ?? defaultStart : defaultStart;
     const endAt = override?.overrideType === "datetime" ? override.endAt ?? defaultEnd : defaultEnd;
-    const status = override?.overrideType === "status" && override.status ? override.status : event.status;
+    const status = normalizeEventStatus(override?.overrideType === "status" && override.status ? override.status : event.status);
     const completedAt = override?.overrideType === "status" ? override.completedAt : event.completedAt;
 
     return {
@@ -326,7 +327,7 @@ export class RecurrenceService {
   }
 
   private isOverdue(status: string, endAt: string | null, occurrenceDate: string): boolean {
-    if (status === "done" || status === "cancelled") {
+    if (isClosedEventStatus(status)) {
       return false;
     }
 

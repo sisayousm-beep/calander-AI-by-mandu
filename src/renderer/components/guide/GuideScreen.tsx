@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 const quickStartSteps = [
   {
     title: "1. 캘린더에서 수동 일정 만들기",
-    description: "캘린더 화면에서 날짜를 드래그하거나 우측 편집 폼에 제목, 시간, 상태를 입력한 뒤 저장합니다.",
+    description: "캘린더 화면에서 날짜를 드래그하거나 우측 편집 폼에 제목, 시간, 상태(예정/진행 중/완료/보류/취소)를 입력한 뒤 저장합니다.",
   },
   {
     title: "2. 반복 일정 설정하기",
@@ -32,7 +32,7 @@ const featureSections = [
     title: "캘린더",
     points: [
       "월, 주, 일, agenda 보기를 전환할 수 있습니다.",
-      "완료 체크는 status와 동기화됩니다. 반복 일정 회차는 개별 오버라이드로 저장됩니다.",
+      "완료 체크는 상태와 동기화됩니다. 반복 일정 회차는 개별 오버라이드로 저장됩니다.",
       "현재 화면 범위 기준 주석(date, week, month)을 우측 패널에서 저장할 수 있습니다.",
     ],
     cta: { to: "/calendar", label: "캘린더 열기" },
@@ -59,11 +59,11 @@ const featureSections = [
   {
     title: "함수 엔진",
     points: [
-      "예: isDone(), and(hasMemo(), not(isDone())), daysUntil(startAt)",
+      "예: 완료인가(), 그리고(메모있음(), 아니다(완료인가())), 남은일수(startAt)",
       "live 규칙에는 random 계열 함수를 저장할 수 없습니다.",
       "반환 타입(boolean, number, string)이 맞는 식만 저장됩니다.",
     ],
-    example: "and(hasMemo(), not(isDone()))",
+    example: "그리고(메모있음(), 아니다(완료인가()))",
     cta: { to: "/functions", label: "함수 열기" },
   },
   {

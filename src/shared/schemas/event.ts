@@ -1,5 +1,8 @@
 import { z } from "zod";
 import { eventStatuses, recurrenceFrequencies } from "@shared/constants/enums";
+import { normalizeEventStatus } from "@shared/utils/eventStatus";
+
+const eventStatusSchema = z.preprocess((value) => normalizeEventStatus(value), z.enum(eventStatuses));
 
 export const recurrenceRuleInputSchema = z
   .object({
@@ -43,7 +46,7 @@ const eventPersistedFieldsSchema = z.object({
   startAt: z.string().datetime().nullable().default(null),
   endAt: z.string().datetime().nullable().default(null),
   allDay: z.boolean().default(false),
-  status: z.enum(eventStatuses).default("planned"),
+  status: eventStatusSchema.default("예정"),
   color: z.string().regex(/^#([0-9a-fA-F]{6})$/).default("#2563eb"),
   timezone: z.string().default("Asia/Seoul"),
   source: z.enum(["manual", "ai"]).default("manual"),
@@ -86,7 +89,7 @@ export const eventInputSchema = applyEventValidation(eventInputObjectSchema);
 
 export const occurrenceOverrideInputSchema = z.object({
   overrideType: z.enum(["skip", "status", "datetime"]),
-  status: z.enum(eventStatuses).nullable().optional(),
+  status: z.preprocess((value) => (value == null ? null : normalizeEventStatus(value)), z.enum(eventStatuses).nullable()).optional(),
   startAt: z.string().datetime().nullable().optional(),
   endAt: z.string().datetime().nullable().optional(),
   completedAt: z.string().datetime().nullable().optional(),

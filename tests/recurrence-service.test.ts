@@ -20,7 +20,7 @@ describe("RecurrenceService", () => {
         startAt: "2026-03-02T10:00:00.000Z",
         endAt: "2026-03-02T11:00:00.000Z",
         allDay: false,
-        status: "planned",
+        status: "예정",
         completedAt: null,
         color: "#2563eb",
         source: "manual",

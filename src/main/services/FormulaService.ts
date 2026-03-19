@@ -1,7 +1,63 @@
 import { Parser } from "expr-eval";
 import type { DatabaseService } from "@main/services/DatabaseService";
 import { dayjs } from "@shared/utils/date";
+import { normalizeEventStatus } from "@shared/utils/eventStatus";
 import { formulaRuleInputSchema, type FormulaRuleInput, type FormulaRuleRecord } from "@shared/schemas/formula";
+
+const koreanFunctionAliases: Array<[string, string]> = [
+  ["무작위참거짓", "randomBool"],
+  ["무작위정수", "randomInt"],
+  ["크거나같다", "gte"],
+  ["작거나같다", "lte"],
+  ["날짜더하기", "addDays"],
+  ["날짜차이", "diffDays"],
+  ["남은일수", "daysUntil"],
+  ["지난일수", "daysSince"],
+  ["요일번호", "dayOfWeek"],
+  ["시작문자인가", "startsWith"],
+  ["끝문자인가", "endsWith"],
+  ["글자수", "length"],
+  ["메모있음", "hasMemo"],
+  ["링크있음", "hasLinks"],
+  ["태그있음", "hasTag"],
+  ["하루종일인가", "isAllDay"],
+  ["반복인가", "isRecurring"],
+  ["마감지남", "isOverdue"],
+  ["진행중인가", "isInProgress"],
+  ["완료인가", "isDone"],
+  ["예정인가", "isPlanned"],
+  ["보류인가", "isPaused"],
+  ["취소인가", "isCancelled"],
+  ["절대값", "abs"],
+  ["반올림", "round"],
+  ["버림", "floor"],
+  ["올림", "ceil"],
+  ["최소", "min"],
+  ["최대", "max"],
+  ["무작위", "random"],
+  ["오늘", "today"],
+  ["지금", "now"],
+  ["포함", "contains"],
+  ["같다", "eq"],
+  ["다르다", "neq"],
+  ["크다", "gt"],
+  ["작다", "lt"],
+  ["그리고", "fn_and"],
+  ["또는", "fn_or"],
+  ["아니다", "fn_not"],
+  ["조건", "fn_if"],
+];
+
+const legacyStatusLiteralMap: Record<string, string> = {
+  planned: "예정",
+  in_progress: "진행 중",
+  done: "완료",
+  paused: "보류",
+  cancelled: "취소",
+  canceled: "취소",
+};
+
+const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 export class FormulaService {
   constructor(private readonly databaseService: DatabaseService) {}
@@ -11,11 +67,12 @@ export class FormulaService {
       const parser = new Parser();
       Object.assign(parser.functions, this.buildFunctions(context));
       const parsed = parser.parse(this.normalizeExpression(expression));
-      const evaluationScope = {
+      const evaluationScope: Record<string, any> = {
         ...context,
+        status: normalizeEventStatus(context.status ?? "예정"),
         now: context.now ?? dayjs().toISOString(),
         today: context.today ?? dayjs().format("YYYY-MM-DD"),
-      } as Record<string, any>;
+      };
       const result = parsed.evaluate(evaluationScope);
       return { ok: true, result, error: null };
     } catch (error) {
@@ -29,7 +86,7 @@ export class FormulaService {
 
   saveRule(payload: FormulaRuleInput): string {
     const parsed = formulaRuleInputSchema.parse(payload);
-    if (parsed.evaluationMode === "live" && /random(Int|Bool)?\s*\(/i.test(parsed.expression)) {
+    if (parsed.evaluationMode === "live" && /(?:random|무작위|무작위정수|무작위참거짓)\s*\(/i.test(parsed.expression)) {
       throw new Error("live 규칙에는 random 계열 함수를 사용할 수 없습니다.");
     }
 
@@ -65,7 +122,7 @@ export class FormulaService {
         id: "sample-event",
         title: "샘플 일정",
         description: "테스트",
-        status: "planned",
+        status: "예정",
         startAt: dayjs().add(1, "day").toISOString(),
         endAt: dayjs().add(1, "day").add(2, "hour").toISOString(),
         allDay: false,
@@ -105,22 +162,22 @@ export class FormulaService {
   }
 
   private buildFunctions(context: Record<string, unknown>): Record<string, (...args: unknown[]) => unknown> {
-    const status = String(context.status ?? "");
+    const status = normalizeEventStatus(context.status ?? "예정");
     const tags = Array.isArray(context.tags) ? context.tags.map((item) => String(item)) : [];
     const noteCount = Number(context.noteCount ?? 0);
     const linkCount = Number(context.linkCount ?? 0);
 
     return {
-      isDone: () => status === "done",
-      isPlanned: () => status === "planned",
-      isInProgress: () => status === "in_progress",
-      isPaused: () => status === "paused",
-      isCancelled: () => status === "cancelled",
+      isDone: () => status === "완료",
+      isPlanned: () => status === "예정",
+      isInProgress: () => status === "진행 중",
+      isPaused: () => status === "보류",
+      isCancelled: () => status === "취소",
       isOverdue: () => {
         if (!context.endAt) {
           return false;
         }
-        return status !== "done" && status !== "cancelled" && dayjs(String(context.endAt)).isBefore(dayjs());
+        return status !== "완료" && status !== "취소" && dayjs(String(context.endAt)).isBefore(dayjs());
       },
       hasMemo: () => noteCount > 0,
       hasLinks: () => linkCount > 0,
@@ -172,10 +229,24 @@ export class FormulaService {
   }
 
   private normalizeExpression(expression: string): string {
-    return expression
+    let normalized = expression;
+
+    for (const [literal, replacement] of Object.entries(legacyStatusLiteralMap)) {
+      const pattern = new RegExp(`(['"])${escapeRegExp(literal)}\\1`, "gi");
+      normalized = normalized.replace(pattern, (_match, quote: string) => `${quote}${replacement}${quote}`);
+    }
+
+    normalized = normalized
       .replace(/\band\s*\(/g, "fn_and(")
       .replace(/\bor\s*\(/g, "fn_or(")
       .replace(/\bnot\s*\(/g, "fn_not(")
       .replace(/\bif\s*\(/g, "fn_if(");
+
+    for (const [alias, target] of koreanFunctionAliases.sort((left, right) => right[0].length - left[0].length)) {
+      const pattern = new RegExp(`${escapeRegExp(alias)}\\s*\\(`, "g");
+      normalized = normalized.replace(pattern, `${target}(`);
+    }
+
+    return normalized;
   }
 }

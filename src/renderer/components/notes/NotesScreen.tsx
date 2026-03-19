@@ -2,6 +2,20 @@ import { useEffect, useMemo, useState } from "react";
 import type { LinkEdge, SearchResults } from "@shared/types/ipc";
 import { useNotesStore } from "@renderer/stores/useNotesStore";
 
+const emptySearchResults: SearchResults = {
+  events: [],
+  notes: [],
+  annotations: [],
+  tags: [],
+};
+
+const normalizeSearchResults = (value: Partial<SearchResults> | null | undefined): SearchResults => ({
+  events: Array.isArray(value?.events) ? value.events : [],
+  notes: Array.isArray(value?.notes) ? value.notes : [],
+  annotations: Array.isArray(value?.annotations) ? value.annotations : [],
+  tags: Array.isArray(value?.tags) ? value.tags : [],
+});
+
 export function NotesScreen(): JSX.Element {
   const { selectedNoteId, noteList, editorDraft, setSelectedNoteId, setNoteList, setEditorDraft } = useNotesStore();
   const [query, setQuery] = useState("");
@@ -31,7 +45,10 @@ export function NotesScreen(): JSX.Element {
     }
 
     const timer = setTimeout(() => {
-      void window.calendarApi.search.global(pending).then((result) => setSuggestions(result));
+      void window.calendarApi.search
+        .global(pending)
+        .then((result) => setSuggestions(normalizeSearchResults(result)))
+        .catch(() => setSuggestions(emptySearchResults));
     }, 160);
 
     return () => clearTimeout(timer);

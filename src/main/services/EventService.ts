@@ -2,6 +2,7 @@ import type { DatabaseService } from "@main/services/DatabaseService";
 import type { LinkService } from "@main/services/LinkService";
 import type { RecurrenceService } from "@main/services/RecurrenceService";
 import { dayjs, compareNullableIso, endOfDayIso, toDateKey } from "@shared/utils/date";
+import { isClosedEventStatus, isDoneEventStatus, normalizeEventStatus } from "@shared/utils/eventStatus";
 import {
   eventInputSchema,
   occurrenceOverrideInputSchema,
@@ -80,7 +81,7 @@ export class EventService {
     const parsed = eventInputSchema.parse(payload);
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
-    const completedAt = parsed.status === "done" ? now : null;
+    const completedAt = isDoneEventStatus(parsed.status) ? now : null;
 
     this.databaseService.transaction(() => {
       this.databaseService.db
@@ -121,7 +122,7 @@ export class EventService {
   update(id: string, payload: EventInput): boolean {
     const parsed = eventInputSchema.parse(payload);
     const now = new Date().toISOString();
-    const completedAt = parsed.status === "done" ? now : null;
+    const completedAt = isDoneEventStatus(parsed.status) ? now : null;
 
     this.databaseService.transaction(() => {
       this.databaseService.db
@@ -183,7 +184,7 @@ export class EventService {
         occurrenceDate,
         occurrenceOverrideInputSchema.parse({
           overrideType: "status",
-          status: done ? "done" : "planned",
+          status: done ? "완료" : "예정",
           completedAt: done ? now : null,
         }),
       );
@@ -192,7 +193,7 @@ export class EventService {
 
     this.databaseService.db
       .prepare("UPDATE events SET status = ?, completedAt = ?, updatedAt = ? WHERE id = ?")
-      .run(done ? "done" : "planned", done ? now : null, now, baseId);
+      .run(done ? "완료" : "예정", done ? now : null, now, baseId);
     return true;
   }
 
@@ -227,6 +228,7 @@ export class EventService {
     return {
       ...event,
       allDay: Boolean(event.allDay),
+      status: normalizeEventStatus(event.status),
       isRecurring: Boolean(event.isRecurring),
       tags,
       noteIds,
@@ -330,7 +332,7 @@ export class EventService {
   }
 
   private isOverdue(status: string, endAt: string | null, startAt: string | null): boolean {
-    if (status === "done" || status === "cancelled") {
+    if (isClosedEventStatus(status)) {
       return false;
     }
 

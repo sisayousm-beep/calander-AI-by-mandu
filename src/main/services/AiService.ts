@@ -27,7 +27,7 @@ export class AiService {
       nowIso: now,
       inputText,
       existingTags: this.databaseService.db.prepare("SELECT name FROM tags ORDER BY name ASC").all().map((item) => (item as { name: string }).name),
-      existingStatuses: ["planned", "in_progress", "done", "paused", "cancelled"],
+      existingStatuses: ["예정", "진행 중", "완료", "보류", "취소"],
     };
 
     const historyId = crypto.randomUUID();

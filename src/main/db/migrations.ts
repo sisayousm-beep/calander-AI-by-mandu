@@ -16,7 +16,7 @@ const migrationStatements = [
     startAt TEXT,
     endAt TEXT,
     allDay INTEGER NOT NULL DEFAULT 0,
-    status TEXT NOT NULL DEFAULT 'planned',
+    status TEXT NOT NULL DEFAULT '예정',
     completedAt TEXT,
     color TEXT DEFAULT '#2563eb',
     source TEXT NOT NULL DEFAULT 'manual',
@@ -156,4 +156,30 @@ export function runMigrations(db: Database.Database): void {
   for (const statement of migrationStatements) {
     db.exec(statement);
   }
+
+  db.exec(`
+    UPDATE events
+    SET status = CASE status
+      WHEN 'planned' THEN '예정'
+      WHEN 'in_progress' THEN '진행 중'
+      WHEN 'done' THEN '완료'
+      WHEN 'paused' THEN '보류'
+      WHEN 'cancelled' THEN '취소'
+      WHEN 'canceled' THEN '취소'
+      WHEN '진행중' THEN '진행 중'
+      ELSE status
+    END;
+
+    UPDATE occurrence_overrides
+    SET status = CASE status
+      WHEN 'planned' THEN '예정'
+      WHEN 'in_progress' THEN '진행 중'
+      WHEN 'done' THEN '완료'
+      WHEN 'paused' THEN '보류'
+      WHEN 'cancelled' THEN '취소'
+      WHEN 'canceled' THEN '취소'
+      WHEN '진행중' THEN '진행 중'
+      ELSE status
+    END;
+  `);
 }

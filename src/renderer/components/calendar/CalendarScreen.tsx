@@ -7,8 +7,9 @@ import interactionPlugin from "@fullcalendar/interaction";
 import type { DatesSetArg, DateSelectArg, EventClickArg } from "@fullcalendar/core";
 import type { AiCandidate } from "@shared/schemas/ai";
 import type { EventDetail, EventInput } from "@shared/schemas/event";
-import type { CalendarView } from "@shared/constants/enums";
+import type { CalendarView, EventStatus } from "@shared/constants/enums";
 import { toDateKey, toMonthKey, toWeekKey, formatDateTime } from "@shared/utils/date";
+import { eventStatusToneClassMap } from "@shared/utils/eventStatus";
 import { useCalendarStore } from "@renderer/stores/useCalendarStore";
 import { useSettingsStore } from "@renderer/stores/useSettingsStore";
 
@@ -19,7 +20,7 @@ type EventFormState = {
   startAt: string;
   endAt: string;
   allDay: boolean;
-  status: "planned" | "in_progress" | "done" | "paused" | "cancelled";
+  status: EventStatus;
   color: string;
   tags: string;
   recurrenceFrequency: "none" | "daily" | "weekly" | "monthly" | "yearly";
@@ -38,7 +39,7 @@ const defaultForm: EventFormState = {
   startAt: "",
   endAt: "",
   allDay: false,
-  status: "planned",
+  status: "예정",
   color: "#2563eb",
   tags: "",
   recurrenceFrequency: "none",
@@ -70,14 +71,6 @@ const fullCalendarToView = (value: string): CalendarView => {
   return "month";
 };
 
-const normalizeLocalDateTime = (value: string, allDay: boolean): string | null => {
-  if (!value) {
-    return null;
-  }
-  const raw = allDay ? `${value}T00:00` : value;
-  return new Date(raw).toISOString();
-};
-
 const toLocalInput = (value: string | null | undefined, allDay: boolean): string => {
   if (!value) {
     return "";
@@ -91,11 +84,52 @@ const toLocalInput = (value: string | null | undefined, allDay: boolean): string
   return allDay ? `${year}-${month}-${day}` : `${year}-${month}-${day}T${hours}:${minutes}`;
 };
 
+const toValidIsoString = (value: string, fieldLabel: string, allDay: boolean): string | null => {
+  if (!value) {
+    return null;
+  }
+
+  const normalized = allDay ? `${value.slice(0, 10)}T00:00` : value.length === 10 ? `${value}T00:00` : value;
+  const date = new Date(normalized);
+  if (Number.isNaN(date.getTime())) {
+    throw new Error(`${fieldLabel} 형식이 올바르지 않습니다.`);
+  }
+
+  return date.toISOString();
+};
+
+const toAllDayInputValue = (value: string): string => (value ? value.slice(0, 10) : "");
+
+const toTimedInputValue = (value: string, fallbackTime: string): string => {
+  if (!value) {
+    return "";
+  }
+
+  if (value.includes("T")) {
+    return value.slice(0, 16);
+  }
+
+  return `${value.slice(0, 10)}T${fallbackTime}`;
+};
+
+const toggleAllDayForm = (form: EventFormState, nextAllDay: boolean): EventFormState => {
+  const nextStartAt = nextAllDay ? toAllDayInputValue(form.startAt) : toTimedInputValue(form.startAt, "09:00");
+  const nextEndSource = form.endAt || form.startAt;
+  const nextEndAt = nextEndSource ? (nextAllDay ? toAllDayInputValue(nextEndSource) : toTimedInputValue(nextEndSource, "10:00")) : "";
+
+  return {
+    ...form,
+    allDay: nextAllDay,
+    startAt: nextStartAt,
+    endAt: nextEndAt,
+  };
+};
+
 const buildPayload = (form: EventFormState, source: "manual" | "ai" = "manual"): EventInput => ({
-  title: form.title,
+  title: form.title.trim(),
   description: form.description,
-  startAt: normalizeLocalDateTime(form.startAt, form.allDay),
-  endAt: normalizeLocalDateTime(form.endAt, form.allDay),
+  startAt: toValidIsoString(form.startAt, "시작 날짜", form.allDay),
+  endAt: toValidIsoString(form.endAt, "종료 날짜", form.allDay),
   allDay: form.allDay,
   status: form.status,
   color: form.color,
@@ -130,11 +164,22 @@ const targetForView = (view: CalendarView, dateIso: string): { targetType: "date
   return { targetType: "date", targetKey: toDateKey(dateIso) };
 };
 
+const getCalendarApi = () => {
+  if (!window.calendarApi) {
+    throw new Error("앱 연결이 준비되지 않았습니다. 앱을 다시 실행한 뒤 다시 시도해 주세요.");
+  }
+
+  return window.calendarApi;
+};
+
 export function CalendarScreen(): JSX.Element {
   const calendarRef = useRef<FullCalendar | null>(null);
   const { currentView, currentDate, selectedEventId, activeFilters, rangeItems, aiPreview, setCurrentView, setCurrentDate, setSelectedEventId, setActiveFilters, setRangeItems, setAiPreview } =
     useCalendarStore();
-  const settingsStore = useSettingsStore();
+  const loadSettings = useSettingsStore((state) => state.load);
+  const defaultCalendarView = useSettingsStore((state) => state.defaultCalendarView);
+  const hasApiKey = useSettingsStore((state) => state.hasApiKey);
+  const aiAvailability = useSettingsStore((state) => state.aiAvailability);
   const [detail, setDetail] = useState<EventDetail | null>(null);
   const [form, setForm] = useState<EventFormState>(defaultForm);
   const [annotationContent, setAnnotationContent] = useState("");
@@ -144,8 +189,8 @@ export function CalendarScreen(): JSX.Element {
   const [message, setMessage] = useState("수동 일정 관리가 기본이며, AI는 API 키 입력 후에만 동작합니다.");
 
   useEffect(() => {
-    void settingsStore.load();
-  }, [settingsStore]);
+    void loadSettings();
+  }, [loadSettings]);
 
   useEffect(() => {
     if (selectedEventId) {
@@ -171,7 +216,7 @@ export function CalendarScreen(): JSX.Element {
   );
 
   const loadDetail = async (id: string) => {
-    const response = await window.calendarApi.events.getById(id);
+    const response = await getCalendarApi().events.getById(id);
     const item = response.item;
     setDetail(item);
     if (!item) {
@@ -198,16 +243,35 @@ export function CalendarScreen(): JSX.Element {
     });
   };
 
+  const loadRangeData = async (mappedView: CalendarView, anchorDate: string, rangeStart: string, rangeEnd: string) => {
+    setCurrentView(mappedView);
+    setCurrentDate(anchorDate);
+    const calendarApi = getCalendarApi();
+    const { items } = await calendarApi.events.listByRange(rangeStart, rangeEnd, activeFilters);
+    setRangeItems(items);
+    const annotationTarget = targetForView(mappedView, anchorDate);
+    const annotationResponse = await calendarApi.annotations.listByTarget(annotationTarget);
+    setAnnotationContent(annotationResponse.items[0]?.content ?? "");
+  };
+
   const handleDatesSet = async (arg: DatesSetArg) => {
     const mappedView = fullCalendarToView(arg.view.type);
     const anchorDate = arg.view.currentStart.toISOString();
-    setCurrentView(mappedView);
-    setCurrentDate(anchorDate);
-    const { items } = await window.calendarApi.events.listByRange(arg.startStr, arg.endStr, activeFilters);
-    setRangeItems(items);
-    const annotationTarget = targetForView(mappedView, anchorDate);
-    const annotationResponse = await window.calendarApi.annotations.listByTarget(annotationTarget);
-    setAnnotationContent(annotationResponse.items[0]?.content ?? "");
+    await loadRangeData(mappedView, anchorDate, arg.startStr, arg.endStr);
+  };
+
+  const refreshVisibleRange = async () => {
+    const api = calendarRef.current?.getApi();
+    if (!api) {
+      return;
+    }
+
+    await loadRangeData(
+      fullCalendarToView(api.view.type),
+      api.view.currentStart.toISOString(),
+      api.view.activeStart.toISOString(),
+      api.view.activeEnd.toISOString(),
+    );
   };
 
   const handleSelect = (arg: DateSelectArg) => {
@@ -226,27 +290,46 @@ export function CalendarScreen(): JSX.Element {
 
   const handleSaveEvent = async () => {
     try {
+      if (!form.title.trim()) {
+        setMessage("일정 제목을 입력해 주세요.");
+        return;
+      }
+
+      if (!form.startAt) {
+        setMessage(form.allDay ? "시작 날짜를 입력해 주세요." : "시작 날짜와 시간을 입력해 주세요.");
+        return;
+      }
+
+      const calendarApi = getCalendarApi();
       const payload = buildPayload(form);
+      const warnings: string[] = [];
+      let savedId = form.id;
+      let saveMessage = "";
       if (form.id) {
-        await window.calendarApi.events.update(form.id, payload);
-        setMessage("일정이 수정되었습니다.");
+        await calendarApi.events.update(form.id, payload);
+        saveMessage = "일정이 수정되었습니다.";
       } else {
-        const response = await window.calendarApi.events.create(payload);
-        setSelectedEventId(response.id);
-        setMessage("일정이 생성되었습니다.");
+        const response = await calendarApi.events.create(payload);
+        savedId = response.id;
+        saveMessage = "일정이 생성되었습니다.";
       }
-      calendarRef.current?.getApi().refetchEvents();
-      const api = calendarRef.current?.getApi();
-      if (api) {
-        await handleDatesSet({
-          end: api.view.activeEnd,
-          endStr: api.view.activeEnd.toISOString(),
-          start: api.view.activeStart,
-          startStr: api.view.activeStart.toISOString(),
-          timeZone: api.view.calendar.getOption("timeZone") ?? "local",
-          view: api.view,
-        });
+
+      if (savedId) {
+        setSelectedEventId(savedId);
+        try {
+          await loadDetail(savedId);
+        } catch {
+          warnings.push("상세 정보");
+        }
       }
+
+      try {
+        await refreshVisibleRange();
+      } catch {
+        warnings.push("캘린더 화면");
+      }
+
+      setMessage(warnings.length === 0 ? saveMessage : `${saveMessage} 다만 ${warnings.join(", ")} 갱신에 문제가 있어 화면 반영이 늦을 수 있습니다.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "일정 저장 실패");
     }
@@ -257,11 +340,11 @@ export function CalendarScreen(): JSX.Element {
       return;
     }
 
-    await window.calendarApi.events.delete(form.id);
+    await getCalendarApi().events.delete(form.id);
     setSelectedEventId(null);
     setForm(defaultForm);
     setMessage("일정이 삭제되었습니다.");
-    calendarRef.current?.getApi().refetchEvents();
+    await refreshVisibleRange();
   };
 
   const handleCompletion = async (done: boolean) => {
@@ -269,15 +352,15 @@ export function CalendarScreen(): JSX.Element {
       return;
     }
 
-    await window.calendarApi.events.setCompletion(detail.id, done);
+    await getCalendarApi().events.setCompletion(detail.id, done);
     setMessage(done ? "완료 처리되었습니다." : "완료가 해제되었습니다.");
     await loadDetail(detail.id);
-    calendarRef.current?.getApi().refetchEvents();
+    await refreshVisibleRange();
   };
 
   const handleSaveAnnotation = async () => {
     const target = targetForView(currentView, currentDate);
-    await window.calendarApi.annotations.upsert({
+    await getCalendarApi().annotations.upsert({
       ...target,
       content: annotationContent,
     });
@@ -287,7 +370,7 @@ export function CalendarScreen(): JSX.Element {
   const handleParseAi = async () => {
     try {
       setAiBusy(true);
-      const { result } = await window.calendarApi.ai.parseSchedule(aiInput);
+      const { result } = await getCalendarApi().ai.parseSchedule(aiInput);
       setAiPreview(result);
       setMessage("AI 후보를 확인한 뒤 저장할 수 있습니다.");
     } catch (error) {
@@ -303,7 +386,7 @@ export function CalendarScreen(): JSX.Element {
       return;
     }
 
-    const response = await window.calendarApi.ai.summarizeRange(api.view.activeStart.toISOString(), api.view.activeEnd.toISOString());
+    const response = await getCalendarApi().ai.summarizeRange(api.view.activeStart.toISOString(), api.view.activeEnd.toISOString());
     setSummary(response.summary);
   };
 
@@ -324,14 +407,19 @@ export function CalendarScreen(): JSX.Element {
     }
 
     try {
+      const calendarApi = getCalendarApi();
       for (const candidate of aiPreview.candidates) {
         const payload: EventInput = {
           title: candidate.title,
           description: candidate.description,
-          startAt: candidate.startDate ? normalizeLocalDateTime(candidate.startTime ? `${candidate.startDate}T${candidate.startTime}` : candidate.startDate, candidate.allDay) : null,
-          endAt: candidate.endDate ? normalizeLocalDateTime(candidate.endTime ? `${candidate.endDate}T${candidate.endTime}` : candidate.endDate, candidate.allDay) : null,
+          startAt: candidate.startDate
+            ? toValidIsoString(candidate.startTime ? `${candidate.startDate}T${candidate.startTime}` : candidate.startDate, "AI 시작 날짜", candidate.allDay)
+            : null,
+          endAt: candidate.endDate
+            ? toValidIsoString(candidate.endTime ? `${candidate.endDate}T${candidate.endTime}` : candidate.endDate, "AI 종료 날짜", candidate.allDay)
+            : null,
           allDay: candidate.allDay,
-          status: "planned",
+          status: "예정",
           color: "#0ea5e9",
           tags: candidate.tags,
           noteIds: [],
@@ -339,10 +427,10 @@ export function CalendarScreen(): JSX.Element {
           timezone: "Asia/Seoul",
           source: "ai",
         };
-        const created = await window.calendarApi.events.create(payload);
+        const created = await calendarApi.events.create(payload);
 
         for (const noteDraft of candidate.noteDrafts) {
-          await window.calendarApi.notes.create({
+          await calendarApi.notes.create({
             title: noteDraft.title,
             content: noteDraft.content,
             linkedEventIds: [created.id],
@@ -353,7 +441,7 @@ export function CalendarScreen(): JSX.Element {
       setAiPreview(null);
       setAiInput("");
       setMessage("AI 후보가 저장되었습니다.");
-      calendarRef.current?.getApi().refetchEvents();
+      await refreshVisibleRange();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "AI 저장 실패");
     }
@@ -400,7 +488,7 @@ export function CalendarScreen(): JSX.Element {
           <FullCalendar
             ref={calendarRef}
             plugins={[dayGridPlugin, timeGridPlugin, listPlugin, interactionPlugin]}
-            initialView={viewToFullCalendar[settingsStore.defaultCalendarView]}
+            initialView={viewToFullCalendar[defaultCalendarView]}
             height="auto"
             selectable
             events={calendarEvents}
@@ -445,11 +533,11 @@ export function CalendarScreen(): JSX.Element {
                 <label className="stack">
                   <span className="muted">상태</span>
                   <select className="select" value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value as EventFormState["status"] })}>
-                    <option value="planned">planned</option>
-                    <option value="in_progress">in_progress</option>
-                    <option value="done">done</option>
-                    <option value="paused">paused</option>
-                    <option value="cancelled">cancelled</option>
+                    <option value="예정">예정</option>
+                    <option value="진행 중">진행 중</option>
+                    <option value="완료">완료</option>
+                    <option value="보류">보류</option>
+                    <option value="취소">취소</option>
                   </select>
                 </label>
                 <label className="stack">
@@ -458,7 +546,7 @@ export function CalendarScreen(): JSX.Element {
                 </label>
                 <label className="stack">
                   <span className="muted">하루 종일</span>
-                  <input type="checkbox" checked={form.allDay} onChange={(event) => setForm({ ...form, allDay: event.target.checked })} />
+                  <input type="checkbox" checked={form.allDay} onChange={(event) => setForm((current) => toggleAllDayForm(current, event.target.checked))} />
                 </label>
               </div>
               <input className="field" placeholder="태그 (쉼표 구분)" value={form.tags} onChange={(event) => setForm({ ...form, tags: event.target.value })} />
@@ -545,17 +633,17 @@ export function CalendarScreen(): JSX.Element {
           <div className="panel">
             <div className="section-title">
               <strong>AI 일정 입력</strong>
-              <span className="badge">{settingsStore.hasApiKey ? settingsStore.aiAvailability : "disabled_no_key"}</span>
+              <span className="badge">{hasApiKey ? aiAvailability : "disabled_no_key"}</span>
             </div>
             <textarea
               className="textarea"
-              placeholder={settingsStore.hasApiKey ? "예: 다음 주 화요일 오전 10시 팀 회의" : "GPT API 키 입력 시 사용 가능"}
+              placeholder={hasApiKey ? "예: 다음 주 화요일 오전 10시 팀 회의" : "GPT API 키 입력 시 사용 가능"}
               value={aiInput}
-              disabled={!settingsStore.hasApiKey}
+              disabled={!hasApiKey}
               onChange={(event) => setAiInput(event.target.value)}
             />
             <div className="toolbar-group">
-              <button className="button primary" disabled={!settingsStore.hasApiKey || aiBusy} onClick={handleParseAi}>
+              <button className="button primary" disabled={!hasApiKey || aiBusy} onClick={handleParseAi}>
                 {aiBusy ? "파싱 중..." : "AI 파싱"}
               </button>
               {aiPreview ? (
@@ -603,7 +691,7 @@ export function CalendarScreen(): JSX.Element {
           <div className="panel">
             <div className="section-title">
               <strong>상세 / 링크</strong>
-              <span className={`status-${detail?.status ?? "planned"}`}>{detail?.status ?? "planned"}</span>
+              <span className={eventStatusToneClassMap[detail?.status ?? "예정"]}>{detail?.status ?? "예정"}</span>
             </div>
             {detail ? (
               <div className="stack">
@@ -613,7 +701,7 @@ export function CalendarScreen(): JSX.Element {
                 </div>
                 <span className="badge">{formatDateTime(detail.startAt)} ~ {formatDateTime(detail.endAt)}</span>
                 <label className="toolbar-group">
-                  <input type="checkbox" checked={detail.status === "done"} onChange={(event) => void handleCompletion(event.target.checked)} />
+                  <input type="checkbox" checked={detail.status === "완료"} onChange={(event) => void handleCompletion(event.target.checked)} />
                   <span>완료 체크</span>
                 </label>
                 <div className="dense-grid">

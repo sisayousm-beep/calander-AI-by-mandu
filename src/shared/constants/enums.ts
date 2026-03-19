@@ -1,4 +1,4 @@
-export const eventStatuses = ["planned", "in_progress", "done", "paused", "cancelled"] as const;
+export const eventStatuses = ["예정", "진행 중", "완료", "보류", "취소"] as const;
 export const linkTypes = [
   "manual",
   "wiki",
