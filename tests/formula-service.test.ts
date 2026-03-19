@@ -4,7 +4,7 @@ import { FormulaService } from "@main/services/FormulaService";
 describe("FormulaService", () => {
   it("evaluates boolean expressions with Korean helper aliases", () => {
     const service = new FormulaService({} as never);
-    const result = service.evaluate("그리고(메모있음(), 아니다(완료인가()))", "event", {
+    const result = service.evaluate("모두참(메모있음(), 아님(완료됨()))", "event", {
       status: "예정",
       noteCount: 1,
       linkCount: 0,

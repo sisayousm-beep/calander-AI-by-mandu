@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { AiAvailability, CalendarView } from "@shared/constants/enums";
+import { waitForCalendarApi } from "@renderer/lib/calendarApi";
 
 type SettingsState = {
   locale: string;
@@ -24,7 +25,8 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   hasApiKey: false,
   apiKeyStorageMode: "none",
   load: async () => {
-    const { settings } = await window.calendarApi.settings.getAll();
+    const calendarApi = await waitForCalendarApi();
+    const { settings } = await calendarApi.settings.getAll();
     set({
       locale: settings.locale ?? "ko-KR",
       timezone: settings.timezone ?? "Asia/Seoul",

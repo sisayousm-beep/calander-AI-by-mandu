@@ -2,11 +2,18 @@ import { useEffect, useRef, useState } from "react";
 import cytoscape from "cytoscape";
 import { useNavigate } from "react-router-dom";
 import type { GraphEdge, GraphNode } from "@shared/types/ipc";
+import { waitForCalendarApi } from "@renderer/lib/calendarApi";
 import { useGraphStore } from "@renderer/stores/useGraphStore";
 
 type GraphData = { nodes: GraphNode[]; edges: GraphEdge[] };
 
 const emptyGraphData: GraphData = { nodes: [], edges: [] };
+const entityTypeLabels: Record<string, string> = {
+  event: "일정",
+  note: "메모",
+  annotation: "주석",
+  tag: "태그",
+};
 
 export function GraphScreen(): JSX.Element {
   const navigate = useNavigate();
@@ -29,7 +36,8 @@ export function GraphScreen(): JSX.Element {
       try {
         setLoading(true);
         setCanvasError(null);
-        const nextData = await window.calendarApi.graph.get(graphFilters);
+        const calendarApi = await waitForCalendarApi();
+        const nextData = await calendarApi.graph.get(graphFilters);
         if (!active) {
           return;
         }
@@ -223,7 +231,7 @@ export function GraphScreen(): JSX.Element {
       <div className="panel stack">
         <div className="section-title">
           <strong>선택한 항목</strong>
-          <span className="badge">{selectedNode?.entityType ?? "없음"}</span>
+          <span className="badge">{selectedNode ? entityTypeLabels[selectedNode.entityType] ?? selectedNode.entityType : "없음"}</span>
         </div>
         {selectedNode ? (
           <>

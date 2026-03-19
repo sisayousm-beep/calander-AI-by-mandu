@@ -1,9 +1,23 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import type { AppMeta } from "@shared/types/ipc";
+import { waitForCalendarApi } from "@renderer/lib/calendarApi";
 import { useSettingsStore } from "@renderer/stores/useSettingsStore";
 
 const defaultMessage = "설정은 앱 안에 저장됩니다. API 키는 가능하면 운영체제의 암호화 저장소를 사용합니다.";
+
+const aiAvailabilityLabels: Record<string, string> = {
+  disabled_no_key: "API 키 없음",
+  enabled_ready: "사용 가능",
+  error_invalid_key: "키 확인 필요",
+  busy: "처리 중",
+};
+
+const apiKeyStorageModeLabels: Record<string, string> = {
+  none: "저장 안 함",
+  session: "앱 실행 중만 보관",
+  encrypted: "암호화 저장",
+};
 
 export function SettingsScreen(): JSX.Element {
   const loadSettings = useSettingsStore((state) => state.load);
@@ -30,7 +44,8 @@ export function SettingsScreen(): JSX.Element {
     const hydrate = async () => {
       try {
         setBusy(true);
-        const [_, appMeta] = await Promise.all([loadSettings(), window.calendarApi.app.getMeta()]);
+        const calendarApi = await waitForCalendarApi();
+        const [_, appMeta] = await Promise.all([loadSettings(), calendarApi.app.getMeta()]);
         if (!active) {
           return;
         }
@@ -67,13 +82,14 @@ export function SettingsScreen(): JSX.Element {
   const handleSave = async () => {
     try {
       setBusy(true);
-      await window.calendarApi.settings.update("openAiModel", model);
-      await window.calendarApi.settings.update("defaultCalendarView", defaultView);
-      await window.calendarApi.settings.update("weekStartsOn", weekStartsOnValue);
-      await window.calendarApi.settings.update("timezone", timezone);
-      await window.calendarApi.settings.update("rememberApiKey", String(rememberApiKey));
+      const calendarApi = await waitForCalendarApi();
+      await calendarApi.settings.update("openAiModel", model);
+      await calendarApi.settings.update("defaultCalendarView", defaultView);
+      await calendarApi.settings.update("weekStartsOn", weekStartsOnValue);
+      await calendarApi.settings.update("timezone", timezone);
+      await calendarApi.settings.update("rememberApiKey", String(rememberApiKey));
       if (apiKey.trim()) {
-        await window.calendarApi.settings.update("openAiApiKeyEncrypted", apiKey.trim());
+        await calendarApi.settings.update("openAiApiKeyEncrypted", apiKey.trim());
         setApiKey("");
       }
       await loadSettings();
@@ -88,7 +104,8 @@ export function SettingsScreen(): JSX.Element {
   const handleClearApiKey = async () => {
     try {
       setBusy(true);
-      await window.calendarApi.settings.update("openAiApiKeyEncrypted", "");
+      const calendarApi = await waitForCalendarApi();
+      await calendarApi.settings.update("openAiApiKeyEncrypted", "");
       await loadSettings();
       setMessage("API 키가 삭제되었습니다.");
     } catch (error) {
@@ -101,7 +118,8 @@ export function SettingsScreen(): JSX.Element {
   const handleExport = async () => {
     try {
       setBusy(true);
-      const response = await window.calendarApi.data.exportJson();
+      const calendarApi = await waitForCalendarApi();
+      const response = await calendarApi.data.exportJson();
       setMessage(response.filePath ? `내보내기 완료: ${response.filePath}` : "내보내기가 취소되었습니다.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "내보내기 실패");
@@ -113,13 +131,14 @@ export function SettingsScreen(): JSX.Element {
   const handleImport = async () => {
     try {
       setBusy(true);
-      const picked = await window.calendarApi.data.pickImportFile();
+      const calendarApi = await waitForCalendarApi();
+      const picked = await calendarApi.data.pickImportFile();
       if (!picked.filePath) {
         setMessage("가져오기가 취소되었습니다.");
         return;
       }
 
-      await window.calendarApi.data.importJson(picked.filePath);
+      await calendarApi.data.importJson(picked.filePath);
       await loadSettings();
       setMessage("가져오기가 완료되었습니다.");
     } catch (error) {
@@ -134,7 +153,7 @@ export function SettingsScreen(): JSX.Element {
       <div className="panel stack">
         <div className="section-title">
           <strong>AI 설정</strong>
-          <span className="badge">{busy ? "불러오는 중" : aiAvailability}</span>
+          <span className="badge">{busy ? "불러오는 중" : aiAvailabilityLabels[aiAvailability] ?? "상태 확인 필요"}</span>
         </div>
         <p className="muted">AI를 쓸 때 필요한 키와 모델을 여기에서 관리합니다.</p>
         <input
@@ -157,7 +176,7 @@ export function SettingsScreen(): JSX.Element {
             API 키 삭제
           </button>
         </div>
-        <div className="muted">현재 저장 방식: {apiKeyStorageMode}</div>
+        <div className="muted">현재 저장 방식: {apiKeyStorageModeLabels[apiKeyStorageMode] ?? apiKeyStorageMode}</div>
       </div>
 
       <div className="panel stack">
@@ -199,7 +218,13 @@ export function SettingsScreen(): JSX.Element {
           <button className="button" disabled={busy} onClick={handleImport}>
             JSON 가져오기
           </button>
-          <button className="button" disabled={busy} onClick={() => void window.calendarApi.app.openDataDirectory()}>
+          <button
+            className="button"
+            disabled={busy}
+            onClick={() => {
+              void waitForCalendarApi().then((calendarApi) => calendarApi.app.openDataDirectory());
+            }}
+          >
             데이터 폴더 열기
           </button>
         </div>

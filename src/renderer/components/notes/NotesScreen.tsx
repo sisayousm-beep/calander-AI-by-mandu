@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { LinkEdge, SearchResults } from "@shared/types/ipc";
+import { waitForCalendarApi } from "@renderer/lib/calendarApi";
 import { useNotesStore } from "@renderer/stores/useNotesStore";
 
 const emptySearchResults: SearchResults = {
@@ -45,8 +46,8 @@ export function NotesScreen(): JSX.Element {
     }
 
     const timer = setTimeout(() => {
-      void window.calendarApi.search
-        .global(pending)
+      void waitForCalendarApi()
+        .then((calendarApi) => calendarApi.search.global(pending))
         .then((result) => setSuggestions(normalizeSearchResults(result)))
         .catch(() => setSuggestions(emptySearchResults));
     }, 160);
@@ -57,7 +58,8 @@ export function NotesScreen(): JSX.Element {
   const selectedNote = useMemo(() => noteList.find((item) => item.id === selectedNoteId) ?? null, [noteList, selectedNoteId]);
 
   const loadNotes = async (searchQuery?: string) => {
-    const { items } = await window.calendarApi.notes.list(searchQuery);
+    const calendarApi = await waitForCalendarApi();
+    const { items } = await calendarApi.notes.list(searchQuery);
     setNoteList(items);
     if (!selectedNoteId && items.length > 0) {
       selectNote(items[0].id);
@@ -65,7 +67,8 @@ export function NotesScreen(): JSX.Element {
   };
 
   const loadLinks = async (noteId: string) => {
-    const response = await window.calendarApi.links.listForEntity("note", noteId);
+    const calendarApi = await waitForCalendarApi();
+    const response = await calendarApi.links.listForEntity("note", noteId);
     setLinks(response);
   };
 
@@ -90,10 +93,12 @@ export function NotesScreen(): JSX.Element {
     };
 
     if (selectedNoteId) {
-      await window.calendarApi.notes.update(selectedNoteId, payload);
+      const calendarApi = await waitForCalendarApi();
+      await calendarApi.notes.update(selectedNoteId, payload);
       setMessage("메모가 수정되었습니다.");
     } else {
-      const response = await window.calendarApi.notes.create(payload);
+      const calendarApi = await waitForCalendarApi();
+      const response = await calendarApi.notes.create(payload);
       setSelectedNoteId(response.id);
       setMessage("메모가 생성되었습니다.");
     }
@@ -106,7 +111,8 @@ export function NotesScreen(): JSX.Element {
       return;
     }
 
-    await window.calendarApi.notes.delete(selectedNoteId);
+    const calendarApi = await waitForCalendarApi();
+    await calendarApi.notes.delete(selectedNoteId);
     setSelectedNoteId(null);
     setEditorDraft({
       title: "",
@@ -220,7 +226,7 @@ export function NotesScreen(): JSX.Element {
         </div>
         <div className="dense-grid">
           <div className="panel">
-            <strong>Outgoing</strong>
+            <strong>내가 건 연결</strong>
             <div className="list">
               {links.outgoing.map((edge) => (
                 <div key={edge.id} className="list-item">
@@ -230,7 +236,7 @@ export function NotesScreen(): JSX.Element {
             </div>
           </div>
           <div className="panel">
-            <strong>Backlinks</strong>
+            <strong>나를 가리키는 연결</strong>
             <div className="list">
               {links.backlinks.map((edge) => (
                 <div key={edge.id} className="list-item">

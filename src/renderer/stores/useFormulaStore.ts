@@ -25,7 +25,7 @@ export const useFormulaStore = create<FormulaStore>((set) => ({
     null,
     2,
   ),
-  lastExpression: "완료인가()",
+  lastExpression: "완료됨()",
   lastResult: "",
   setActiveTargetType: (activeTargetType) => set({ activeTargetType }),
   setSampleContext: (sampleContext) => set({ sampleContext }),

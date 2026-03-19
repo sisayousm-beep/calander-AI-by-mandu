@@ -11,6 +11,7 @@ import type { CalendarView, EventStatus } from "@shared/constants/enums";
 import { toDateKey, toMonthKey, toWeekKey, formatDateTime } from "@shared/utils/date";
 import { eventStatusToneClassMap } from "@shared/utils/eventStatus";
 import { useCalendarStore } from "@renderer/stores/useCalendarStore";
+import { waitForCalendarApi } from "@renderer/lib/calendarApi";
 import { useSettingsStore } from "@renderer/stores/useSettingsStore";
 
 type EventFormState = {
@@ -56,6 +57,28 @@ const viewToFullCalendar: Record<CalendarView, string> = {
   week: "timeGridWeek",
   day: "timeGridDay",
   agenda: "listMonth",
+};
+
+const viewLabels: Record<CalendarView, string> = {
+  month: "월",
+  week: "주",
+  day: "일",
+  agenda: "목록",
+};
+
+const recurrenceFrequencyLabels: Record<EventFormState["recurrenceFrequency"], string> = {
+  none: "반복 안 함",
+  daily: "매일",
+  weekly: "매주",
+  monthly: "매월",
+  yearly: "매년",
+};
+
+const aiAvailabilityLabels: Record<string, string> = {
+  disabled_no_key: "API 키 없음",
+  enabled_ready: "사용 가능",
+  error_invalid_key: "키 확인 필요",
+  busy: "처리 중",
 };
 
 const fullCalendarToView = (value: string): CalendarView => {
@@ -164,14 +187,6 @@ const targetForView = (view: CalendarView, dateIso: string): { targetType: "date
   return { targetType: "date", targetKey: toDateKey(dateIso) };
 };
 
-const getCalendarApi = () => {
-  if (!window.calendarApi) {
-    throw new Error("앱 연결이 준비되지 않았습니다. 앱을 다시 실행한 뒤 다시 시도해 주세요.");
-  }
-
-  return window.calendarApi;
-};
-
 export function CalendarScreen(): JSX.Element {
   const calendarRef = useRef<FullCalendar | null>(null);
   const { currentView, currentDate, selectedEventId, activeFilters, rangeItems, aiPreview, setCurrentView, setCurrentDate, setSelectedEventId, setActiveFilters, setRangeItems, setAiPreview } =
@@ -216,7 +231,8 @@ export function CalendarScreen(): JSX.Element {
   );
 
   const loadDetail = async (id: string) => {
-    const response = await getCalendarApi().events.getById(id);
+    const calendarApi = await waitForCalendarApi();
+    const response = await calendarApi.events.getById(id);
     const item = response.item;
     setDetail(item);
     if (!item) {
@@ -246,7 +262,7 @@ export function CalendarScreen(): JSX.Element {
   const loadRangeData = async (mappedView: CalendarView, anchorDate: string, rangeStart: string, rangeEnd: string) => {
     setCurrentView(mappedView);
     setCurrentDate(anchorDate);
-    const calendarApi = getCalendarApi();
+    const calendarApi = await waitForCalendarApi();
     const { items } = await calendarApi.events.listByRange(rangeStart, rangeEnd, activeFilters);
     setRangeItems(items);
     const annotationTarget = targetForView(mappedView, anchorDate);
@@ -300,7 +316,7 @@ export function CalendarScreen(): JSX.Element {
         return;
       }
 
-      const calendarApi = getCalendarApi();
+      const calendarApi = await waitForCalendarApi();
       const payload = buildPayload(form);
       const warnings: string[] = [];
       let savedId = form.id;
@@ -340,7 +356,8 @@ export function CalendarScreen(): JSX.Element {
       return;
     }
 
-    await getCalendarApi().events.delete(form.id);
+    const calendarApi = await waitForCalendarApi();
+    await calendarApi.events.delete(form.id);
     setSelectedEventId(null);
     setForm(defaultForm);
     setMessage("일정이 삭제되었습니다.");
@@ -352,7 +369,8 @@ export function CalendarScreen(): JSX.Element {
       return;
     }
 
-    await getCalendarApi().events.setCompletion(detail.id, done);
+    const calendarApi = await waitForCalendarApi();
+    await calendarApi.events.setCompletion(detail.id, done);
     setMessage(done ? "완료 처리되었습니다." : "완료가 해제되었습니다.");
     await loadDetail(detail.id);
     await refreshVisibleRange();
@@ -360,7 +378,8 @@ export function CalendarScreen(): JSX.Element {
 
   const handleSaveAnnotation = async () => {
     const target = targetForView(currentView, currentDate);
-    await getCalendarApi().annotations.upsert({
+    const calendarApi = await waitForCalendarApi();
+    await calendarApi.annotations.upsert({
       ...target,
       content: annotationContent,
     });
@@ -370,7 +389,8 @@ export function CalendarScreen(): JSX.Element {
   const handleParseAi = async () => {
     try {
       setAiBusy(true);
-      const { result } = await getCalendarApi().ai.parseSchedule(aiInput);
+      const calendarApi = await waitForCalendarApi();
+      const { result } = await calendarApi.ai.parseSchedule(aiInput);
       setAiPreview(result);
       setMessage("AI 후보를 확인한 뒤 저장할 수 있습니다.");
     } catch (error) {
@@ -386,7 +406,8 @@ export function CalendarScreen(): JSX.Element {
       return;
     }
 
-    const response = await getCalendarApi().ai.summarizeRange(api.view.activeStart.toISOString(), api.view.activeEnd.toISOString());
+    const calendarApi = await waitForCalendarApi();
+    const response = await calendarApi.ai.summarizeRange(api.view.activeStart.toISOString(), api.view.activeEnd.toISOString());
     setSummary(response.summary);
   };
 
@@ -407,7 +428,7 @@ export function CalendarScreen(): JSX.Element {
     }
 
     try {
-      const calendarApi = getCalendarApi();
+      const calendarApi = await waitForCalendarApi();
       for (const candidate of aiPreview.candidates) {
         const payload: EventInput = {
           title: candidate.title,
@@ -466,7 +487,7 @@ export function CalendarScreen(): JSX.Element {
               className={`button${currentView === view ? " primary" : ""}`}
               onClick={() => calendarRef.current?.getApi().changeView(viewToFullCalendar[view])}
             >
-              {view}
+              {viewLabels[view]}
             </button>
           ))}
         </div>
@@ -558,11 +579,11 @@ export function CalendarScreen(): JSX.Element {
                     value={form.recurrenceFrequency}
                     onChange={(event) => setForm({ ...form, recurrenceFrequency: event.target.value as EventFormState["recurrenceFrequency"] })}
                   >
-                    <option value="none">none</option>
-                    <option value="daily">daily</option>
-                    <option value="weekly">weekly</option>
-                    <option value="monthly">monthly</option>
-                    <option value="yearly">yearly</option>
+                    {Object.entries(recurrenceFrequencyLabels).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
                   </select>
                 </label>
                 <label className="stack">
@@ -581,7 +602,7 @@ export function CalendarScreen(): JSX.Element {
               {form.recurrenceFrequency === "monthly" || form.recurrenceFrequency === "yearly" ? (
                 <input
                   className="field"
-                  placeholder="dayOfMonth"
+                  placeholder="매달 몇 일"
                   value={form.recurrenceDayOfMonth}
                   onChange={(event) => setForm({ ...form, recurrenceDayOfMonth: event.target.value })}
                 />
@@ -589,7 +610,7 @@ export function CalendarScreen(): JSX.Element {
               {form.recurrenceFrequency === "yearly" ? (
                 <input
                   className="field"
-                  placeholder="monthOfYear"
+                  placeholder="몇 월"
                   value={form.recurrenceMonthOfYear}
                   onChange={(event) => setForm({ ...form, recurrenceMonthOfYear: event.target.value })}
                 />
@@ -597,13 +618,13 @@ export function CalendarScreen(): JSX.Element {
               <div className="dense-grid">
                 <input
                   className="field"
-                  placeholder="untilDate (YYYY-MM-DD)"
+                  placeholder="반복 종료일 (YYYY-MM-DD)"
                   value={form.recurrenceUntilDate}
                   onChange={(event) => setForm({ ...form, recurrenceUntilDate: event.target.value })}
                 />
                 <input
                   className="field"
-                  placeholder="count"
+                  placeholder="반복 횟수"
                   value={form.recurrenceCount}
                   onChange={(event) => setForm({ ...form, recurrenceCount: event.target.value })}
                 />
@@ -633,7 +654,7 @@ export function CalendarScreen(): JSX.Element {
           <div className="panel">
             <div className="section-title">
               <strong>AI 일정 입력</strong>
-              <span className="badge">{hasApiKey ? aiAvailability : "disabled_no_key"}</span>
+              <span className="badge">{aiAvailabilityLabels[hasApiKey ? aiAvailability : "disabled_no_key"] ?? "상태 확인 필요"}</span>
             </div>
             <textarea
               className="textarea"
@@ -667,13 +688,13 @@ export function CalendarScreen(): JSX.Element {
                       <div className="dense-grid">
                         <input
                           className="field"
-                          placeholder="startDate"
+                          placeholder="시작 날짜"
                           value={candidate.startDate ?? ""}
                           onChange={(event) => patchCandidate(index, { startDate: event.target.value || null })}
                         />
                         <input
                           className="field"
-                          placeholder="startTime"
+                          placeholder="시작 시간"
                           value={candidate.startTime ?? ""}
                           onChange={(event) => patchCandidate(index, { startTime: event.target.value || null })}
                         />

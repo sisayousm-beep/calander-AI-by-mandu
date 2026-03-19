@@ -59,11 +59,11 @@ const featureSections = [
   {
     title: "함수 엔진",
     points: [
-      "예: 완료인가(), 그리고(메모있음(), 아니다(완료인가())), 남은일수(startAt)",
+      "예: 완료됨(), 모두참(메모있음(), 아님(완료됨())), 남은일수(startAt)",
       "live 규칙에는 random 계열 함수를 저장할 수 없습니다.",
       "반환 타입(boolean, number, string)이 맞는 식만 저장됩니다.",
     ],
-    example: "그리고(메모있음(), 아니다(완료인가()))",
+    example: "모두참(메모있음(), 아님(완료됨()))",
     cta: { to: "/functions", label: "함수 열기" },
   },
   {
