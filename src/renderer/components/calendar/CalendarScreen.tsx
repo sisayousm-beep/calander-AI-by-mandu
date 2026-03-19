@@ -75,6 +75,16 @@ const recurrenceFrequencyLabels: Record<EventFormState["recurrenceFrequency"], s
   yearly: "매년",
 };
 
+const weekdayOptions = [
+  { label: "월", value: 1 },
+  { label: "화", value: 2 },
+  { label: "수", value: 3 },
+  { label: "목", value: 4 },
+  { label: "금", value: 5 },
+  { label: "토", value: 6 },
+  { label: "일", value: 7 },
+] as const;
+
 const aiAvailabilityLabels: Record<string, string> = {
   disabled_no_key: "API 키 없음",
   enabled_ready: "사용 가능",
@@ -149,6 +159,72 @@ const toggleAllDayForm = (form: EventFormState, nextAllDay: boolean): EventFormS
   };
 };
 
+const parseWeekdaySelection = (value: string): number[] =>
+  [...new Set(
+    value
+      .split(",")
+      .map((item) => Number(item.trim()))
+      .filter((item) => Number.isInteger(item) && item >= 1 && item <= 7),
+  )].sort((left, right) => left - right);
+
+const serializeWeekdaySelection = (values: number[]): string => [...new Set(values)].sort((left, right) => left - right).join(",");
+
+const resolveSuggestedWeekday = (startAt: string, allDay: boolean): number => {
+  const normalized = startAt ? (startAt.includes("T") ? startAt : `${startAt}T00:00`) : new Date().toISOString();
+  const date = new Date(allDay && normalized.length === 10 ? `${normalized}T00:00` : normalized);
+  if (Number.isNaN(date.getTime())) {
+    return 1;
+  }
+
+  const weekday = date.getDay();
+  return weekday === 0 ? 7 : weekday;
+};
+
+const buildRecurrenceSummary = (form: EventFormState, selectedWeekdays: number[]): string => {
+  const interval = Math.max(Number(form.recurrenceInterval || "1"), 1);
+  const suffixes = [];
+
+  if (form.recurrenceUntilDate) {
+    suffixes.push(`${form.recurrenceUntilDate}까지`);
+  }
+
+  if (form.recurrenceCount) {
+    suffixes.push(`${form.recurrenceCount}회`);
+  }
+
+  const suffix = suffixes.length > 0 ? ` · ${suffixes.join(" · ")}` : "";
+
+  if (form.recurrenceFrequency === "none") {
+    return "반복 없음";
+  }
+
+  if (form.recurrenceFrequency === "daily") {
+    return `${interval === 1 ? "매일" : `${interval}일마다`}${suffix}`;
+  }
+
+  if (form.recurrenceFrequency === "weekly") {
+    const weekdayText = selectedWeekdays.length > 0 ? selectedWeekdays.map((day) => weekdayOptions.find((option) => option.value === day)?.label ?? String(day)).join("·") : "요일 선택";
+    return `${interval === 1 ? "매주" : `${interval}주마다`} ${weekdayText}${suffix}`;
+  }
+
+  if (form.recurrenceFrequency === "monthly") {
+    const dayOfMonthText = form.recurrenceDayOfMonth ? `${form.recurrenceDayOfMonth}일` : "날짜 지정";
+    return `${interval === 1 ? "매월" : `${interval}개월마다`} ${dayOfMonthText}${suffix}`;
+  }
+
+  const monthOfYearText = form.recurrenceMonthOfYear ? `${form.recurrenceMonthOfYear}월` : "월 지정";
+  const dayOfMonthText = form.recurrenceDayOfMonth ? `${form.recurrenceDayOfMonth}일` : "날짜 지정";
+  return `${interval === 1 ? "매년" : `${interval}년마다`} ${monthOfYearText} ${dayOfMonthText}${suffix}`;
+};
+
+const recurrenceHelpTextMap: Record<EventFormState["recurrenceFrequency"], string> = {
+  none: "반복이 없는 일반 일정입니다. 반복 빈도를 고르면 아래에서 세부 규칙을 정할 수 있습니다.",
+  daily: "간격 2는 이틀마다, 간격 3은 사흘마다를 뜻합니다.",
+  weekly: "반복할 요일을 클릭해 고르세요. 여러 요일을 함께 선택할 수 있습니다.",
+  monthly: "매달 반복할 날짜를 넣으세요. 예: 15일",
+  yearly: "반복할 월과 날짜를 함께 정하면 매년 같은 날에 반복됩니다.",
+};
+
 const buildPayload = (form: EventFormState, source: "manual" | "ai" = "manual"): EventInput => ({
   title: form.title.trim(),
   description: form.description,
@@ -200,6 +276,43 @@ export function CalendarScreen(): JSX.Element {
   const [aiBusy, setAiBusy] = useState(false);
   const [summary, setSummary] = useState("");
   const [message, setMessage] = useState("수동 일정 관리가 기본이며, AI는 API 키 입력 후에만 동작합니다.");
+  const selectedWeekdays = useMemo(() => parseWeekdaySelection(form.recurrenceDaysOfWeek), [form.recurrenceDaysOfWeek]);
+  const recurrenceSummary = useMemo(() => buildRecurrenceSummary(form, selectedWeekdays), [form, selectedWeekdays]);
+
+  const handleRecurrenceFrequencyChange = (nextFrequency: EventFormState["recurrenceFrequency"]) => {
+    setForm((current) => {
+      if (nextFrequency !== "weekly") {
+        return { ...current, recurrenceFrequency: nextFrequency };
+      }
+
+      const existingWeekdays = parseWeekdaySelection(current.recurrenceDaysOfWeek);
+      return {
+        ...current,
+        recurrenceFrequency: nextFrequency,
+        recurrenceDaysOfWeek:
+          existingWeekdays.length > 0 ? serializeWeekdaySelection(existingWeekdays) : serializeWeekdaySelection([resolveSuggestedWeekday(current.startAt, current.allDay)]),
+      };
+    });
+  };
+
+  const toggleWeekday = (weekday: number) => {
+    setForm((current) => {
+      const currentValues = parseWeekdaySelection(current.recurrenceDaysOfWeek);
+      const nextValues = currentValues.includes(weekday) ? currentValues.filter((item) => item !== weekday) : [...currentValues, weekday];
+
+      return {
+        ...current,
+        recurrenceDaysOfWeek: serializeWeekdaySelection(nextValues),
+      };
+    });
+  };
+
+  const applyWeeklyPreset = (values: number[]) => {
+    setForm((current) => ({
+      ...current,
+      recurrenceDaysOfWeek: serializeWeekdaySelection(values),
+    }));
+  };
 
   useEffect(() => {
     void loadSettings();
@@ -569,63 +682,124 @@ export function CalendarScreen(): JSX.Element {
                 </label>
               </div>
               <input className="field" placeholder="태그 (쉼표 구분)" value={form.tags} onChange={(event) => setForm({ ...form, tags: event.target.value })} />
-              <div className="dense-grid">
-                <label className="stack">
-                  <span className="muted">반복</span>
-                  <select
-                    className="select"
-                    value={form.recurrenceFrequency}
-                    onChange={(event) => setForm({ ...form, recurrenceFrequency: event.target.value as EventFormState["recurrenceFrequency"] })}
-                  >
-                    {Object.entries(recurrenceFrequencyLabels).map(([value, label]) => (
-                      <option key={value} value={value}>
-                        {label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="stack">
-                  <span className="muted">간격</span>
-                  <input className="field" value={form.recurrenceInterval} onChange={(event) => setForm({ ...form, recurrenceInterval: event.target.value })} />
-                </label>
-              </div>
-              {form.recurrenceFrequency === "weekly" ? (
-                <input
-                  className="field"
-                  placeholder="요일 1..7 (예: 2,4)"
-                  value={form.recurrenceDaysOfWeek}
-                  onChange={(event) => setForm({ ...form, recurrenceDaysOfWeek: event.target.value })}
-                />
-              ) : null}
-              {form.recurrenceFrequency === "monthly" || form.recurrenceFrequency === "yearly" ? (
-                <input
-                  className="field"
-                  placeholder="매달 몇 일"
-                  value={form.recurrenceDayOfMonth}
-                  onChange={(event) => setForm({ ...form, recurrenceDayOfMonth: event.target.value })}
-                />
-              ) : null}
-              {form.recurrenceFrequency === "yearly" ? (
-                <input
-                  className="field"
-                  placeholder="몇 월"
-                  value={form.recurrenceMonthOfYear}
-                  onChange={(event) => setForm({ ...form, recurrenceMonthOfYear: event.target.value })}
-                />
-              ) : null}
-              <div className="dense-grid">
-                <input
-                  className="field"
-                  placeholder="반복 종료일 (YYYY-MM-DD)"
-                  value={form.recurrenceUntilDate}
-                  onChange={(event) => setForm({ ...form, recurrenceUntilDate: event.target.value })}
-                />
-                <input
-                  className="field"
-                  placeholder="반복 횟수"
-                  value={form.recurrenceCount}
-                  onChange={(event) => setForm({ ...form, recurrenceCount: event.target.value })}
-                />
+              <div className="recurrence-card stack">
+                <div className="recurrence-header">
+                  <div className="stack recurrence-title">
+                    <strong>반복 설정</strong>
+                    <p className="muted recurrence-help">{recurrenceHelpTextMap[form.recurrenceFrequency]}</p>
+                  </div>
+                  <span className="badge">{recurrenceSummary}</span>
+                </div>
+                <div className="dense-grid">
+                  <label className="stack">
+                    <span className="muted">반복</span>
+                    <select className="select" value={form.recurrenceFrequency} onChange={(event) => handleRecurrenceFrequencyChange(event.target.value as EventFormState["recurrenceFrequency"])}>
+                      {Object.entries(recurrenceFrequencyLabels).map(([value, label]) => (
+                        <option key={value} value={value}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="stack">
+                    <span className="muted">간격</span>
+                    <input
+                      className="field"
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={form.recurrenceInterval}
+                      onChange={(event) => setForm({ ...form, recurrenceInterval: event.target.value })}
+                    />
+                  </label>
+                </div>
+                {form.recurrenceFrequency === "weekly" ? (
+                  <div className="stack">
+                    <span className="muted">요일 선택</span>
+                    <div className="weekday-picker">
+                      {weekdayOptions.map((weekday) => (
+                        <button
+                          key={weekday.value}
+                          type="button"
+                          className={`weekday-chip${selectedWeekdays.includes(weekday.value) ? " active" : ""}`}
+                          aria-pressed={selectedWeekdays.includes(weekday.value)}
+                          onClick={() => toggleWeekday(weekday.value)}
+                        >
+                          <span>{weekday.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                    <div className="weekday-presets">
+                      <button type="button" className="weekday-preset" onClick={() => applyWeeklyPreset([1, 2, 3, 4, 5])}>
+                        평일
+                      </button>
+                      <button type="button" className="weekday-preset" onClick={() => applyWeeklyPreset([6, 7])}>
+                        주말
+                      </button>
+                      <button type="button" className="weekday-preset" onClick={() => applyWeeklyPreset([1, 2, 3, 4, 5, 6, 7])}>
+                        매일
+                      </button>
+                      <button type="button" className="weekday-preset" onClick={() => applyWeeklyPreset([])}>
+                        선택 해제
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+                {form.recurrenceFrequency === "monthly" || form.recurrenceFrequency === "yearly" ? (
+                  <div className="dense-grid">
+                    <label className="stack">
+                      <span className="muted">반복 날짜</span>
+                      <input
+                        className="field"
+                        type="number"
+                        min="1"
+                        max="31"
+                        placeholder="예: 15"
+                        value={form.recurrenceDayOfMonth}
+                        onChange={(event) => setForm({ ...form, recurrenceDayOfMonth: event.target.value })}
+                      />
+                    </label>
+                    {form.recurrenceFrequency === "yearly" ? (
+                      <label className="stack">
+                        <span className="muted">반복 월</span>
+                        <input
+                          className="field"
+                          type="number"
+                          min="1"
+                          max="12"
+                          placeholder="예: 3"
+                          value={form.recurrenceMonthOfYear}
+                          onChange={(event) => setForm({ ...form, recurrenceMonthOfYear: event.target.value })}
+                        />
+                      </label>
+                    ) : null}
+                  </div>
+                ) : null}
+                {form.recurrenceFrequency !== "none" ? (
+                  <div className="dense-grid">
+                    <label className="stack">
+                      <span className="muted">반복 종료일</span>
+                      <input
+                        className="field"
+                        type="date"
+                        value={form.recurrenceUntilDate}
+                        onChange={(event) => setForm({ ...form, recurrenceUntilDate: event.target.value })}
+                      />
+                    </label>
+                    <label className="stack">
+                      <span className="muted">반복 횟수</span>
+                      <input
+                        className="field"
+                        type="number"
+                        min="1"
+                        step="1"
+                        placeholder="예: 12"
+                        value={form.recurrenceCount}
+                        onChange={(event) => setForm({ ...form, recurrenceCount: event.target.value })}
+                      />
+                    </label>
+                  </div>
+                ) : null}
               </div>
               <div className="toolbar-group">
                 <button className="button primary" onClick={handleSaveEvent}>

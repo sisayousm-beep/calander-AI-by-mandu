@@ -412,6 +412,80 @@ button {
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
 }
 
+.recurrence-card {
+  padding: 18px;
+  border-radius: 24px;
+  border: 1px solid rgba(159, 181, 198, 0.16);
+  background:
+    radial-gradient(circle at top left, rgba(149, 197, 220, 0.12), transparent 32%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent),
+    rgba(8, 14, 22, 0.72);
+}
+
+.recurrence-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.recurrence-title {
+  gap: 6px;
+}
+
+.recurrence-help {
+  margin: 0;
+}
+
+.weekday-picker {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.weekday-chip,
+.weekday-preset {
+  border: 1px solid rgba(192, 222, 236, 0.16);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent),
+    rgba(10, 16, 25, 0.86);
+  color: var(--text);
+  transition: transform 180ms ease, border-color 180ms ease, background 180ms ease, box-shadow 180ms ease;
+}
+
+.weekday-chip {
+  min-height: 52px;
+  border-radius: 18px;
+  font-weight: 700;
+}
+
+.weekday-chip:hover,
+.weekday-preset:hover {
+  border-color: rgba(192, 222, 236, 0.28);
+  transform: translateY(-1px);
+}
+
+.weekday-chip.active {
+  border-color: rgba(192, 222, 236, 0.32);
+  background:
+    linear-gradient(135deg, rgba(149, 197, 220, 0.2), rgba(216, 200, 174, 0.16)),
+    rgba(12, 18, 27, 0.92);
+  color: #f6fbff;
+  box-shadow: 0 14px 28px rgba(108, 154, 186, 0.16);
+}
+
+.weekday-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.weekday-preset {
+  padding: 9px 12px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+}
+
 .helper-grid {
   display: grid;
   gap: 12px;
@@ -696,5 +770,13 @@ pre {
   .dense-grid,
   .function-meta-grid {
     grid-template-columns: 1fr;
+  }
+
+  .recurrence-header {
+    flex-direction: column;
+  }
+
+  .weekday-picker {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }

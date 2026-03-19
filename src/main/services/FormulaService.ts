@@ -1,5 +1,7 @@
+import type { Dayjs } from "dayjs";
 import { Parser } from "expr-eval";
 import type { DatabaseService } from "@main/services/DatabaseService";
+import { recurrenceRuleInputSchema, type RecurrenceRuleInput } from "@shared/schemas/event";
 import { dayjs } from "@shared/utils/date";
 import { normalizeEventStatus } from "@shared/utils/eventStatus";
 import { formulaRuleInputSchema, type FormulaRuleInput, type FormulaRuleRecord } from "@shared/schemas/formula";
@@ -164,7 +166,19 @@ export class FormulaService {
         startAt: dayjs().add(1, "day").toISOString(),
         endAt: dayjs().add(1, "day").add(2, "hour").toISOString(),
         allDay: false,
-        isRecurring: false,
+        isRecurring: true,
+        occurrenceDate: "2026-03-17",
+        totalRecurrenceCount: 12,
+        currentRecurrenceCount: 3,
+        recurrence: {
+          frequency: "weekly",
+          interval: 1,
+          daysOfWeek: [2],
+          dayOfMonth: null,
+          monthOfYear: null,
+          untilDate: null,
+          count: 12,
+        },
         tagCount: 1,
         noteCount: 1,
         linkCount: 1,
@@ -204,6 +218,9 @@ export class FormulaService {
     const tags = Array.isArray(context.tags) ? context.tags.map((item) => String(item)) : [];
     const noteCount = Number(context.noteCount ?? 0);
     const linkCount = Number(context.linkCount ?? 0);
+    const recurrence = this.getRecurrenceFromContext(context.recurrence);
+    const totalRecurrenceCount = this.resolveTotalRecurrenceCount(context, recurrence);
+    const currentRecurrenceCount = this.resolveCurrentRecurrenceCount(context, recurrence);
 
     return {
       isDone: () => status === "완료",
@@ -222,6 +239,8 @@ export class FormulaService {
       hasTag: (name?: unknown) => (name ? tags.includes(String(name)) : tags.length > 0),
       isAllDay: () => Boolean(context.allDay),
       isRecurring: () => Boolean(context.isRecurring),
+      totalRecurrenceCount: () => totalRecurrenceCount,
+      currentRecurrenceCount: () => currentRecurrenceCount,
       fn_and: (...args: unknown[]) => args.every(Boolean),
       fn_or: (...args: unknown[]) => args.some(Boolean),
       fn_not: (value: unknown) => !value,
@@ -264,6 +283,200 @@ export class FormulaService {
       endsWith: (text: unknown, suffix: unknown) => String(text ?? "").endsWith(String(suffix ?? "")),
       length: (text: unknown) => String(text ?? "").length,
     };
+  }
+
+  private getRecurrenceFromContext(value: unknown): RecurrenceRuleInput | null {
+    const parsed = recurrenceRuleInputSchema.safeParse(value);
+    if (!parsed.success || parsed.data.frequency === "none") {
+      return null;
+    }
+    return parsed.data;
+  }
+
+  private resolveTotalRecurrenceCount(context: Record<string, unknown>, recurrence: RecurrenceRuleInput | null): number {
+    const directCount = this.resolvePositiveInteger(context.totalRecurrenceCount ?? context.recurrenceCount);
+    if (directCount !== null) {
+      return directCount;
+    }
+
+    if (!recurrence) {
+      return 0;
+    }
+
+    if (recurrence.count) {
+      return recurrence.count;
+    }
+
+    if (!recurrence.untilDate) {
+      return 0;
+    }
+
+    const startDate = this.getContextDate(context.startAt ?? context.createdAt);
+    if (!startDate) {
+      return 0;
+    }
+
+    const untilDate = dayjs.utc(recurrence.untilDate).startOf("day");
+    return this.iterateOccurrences(startDate, recurrence, untilDate, () => false);
+  }
+
+  private resolveCurrentRecurrenceCount(context: Record<string, unknown>, recurrence: RecurrenceRuleInput | null): number {
+    const directCount = this.resolvePositiveInteger(
+      context.currentRecurrenceCount ?? context.currentOccurrenceIndex ?? context.occurrenceIndex,
+    );
+    if (directCount !== null) {
+      return directCount;
+    }
+
+    const recurring = Boolean(context.isRecurring) || Boolean(recurrence);
+    if (!recurring) {
+      return 0;
+    }
+
+    if (!recurrence) {
+      return 1;
+    }
+
+    const startDate = this.getContextDate(context.startAt ?? context.createdAt);
+    const occurrenceDate = this.getContextDate(context.occurrenceDate ?? context.currentOccurrenceDate ?? context.startAt ?? context.createdAt);
+    if (!startDate || !occurrenceDate) {
+      return 1;
+    }
+
+    let occurrenceIndex = 0;
+    this.iterateOccurrences(startDate, recurrence, occurrenceDate, (candidate, index) => {
+      if (candidate.isSame(occurrenceDate, "day")) {
+        occurrenceIndex = index;
+        return true;
+      }
+      return false;
+    });
+
+    return occurrenceIndex || 1;
+  }
+
+  private iterateOccurrences(
+    startDate: Dayjs,
+    recurrence: RecurrenceRuleInput,
+    stopDate: Dayjs,
+    onOccurrence: (candidate: Dayjs, index: number) => boolean,
+  ): number {
+    if (recurrence.frequency === "none") {
+      return 0;
+    }
+
+    const effectiveEnd = this.getEffectiveEndDate(recurrence, stopDate);
+    if (effectiveEnd.isBefore(startDate, "day")) {
+      return 0;
+    }
+
+    let count = 0;
+    const visit = (candidate: Dayjs): boolean => {
+      if (candidate.isAfter(effectiveEnd, "day")) {
+        return true;
+      }
+
+      count += 1;
+      if (onOccurrence(candidate, count)) {
+        return true;
+      }
+
+      return Boolean(recurrence.count && count >= recurrence.count);
+    };
+
+    if (recurrence.frequency === "daily") {
+      let current = startDate;
+      while (current.isBefore(effectiveEnd, "day") || current.isSame(effectiveEnd, "day")) {
+        if (visit(current)) {
+          return count;
+        }
+        current = current.add(recurrence.interval, "day");
+      }
+      return count;
+    }
+
+    if (recurrence.frequency === "weekly") {
+      const daysOfWeek = recurrence.daysOfWeek.length > 0 ? recurrence.daysOfWeek : [startDate.isoWeekday()];
+      let current = startDate;
+      let guard = 0;
+
+      while ((current.isBefore(effectiveEnd, "day") || current.isSame(effectiveEnd, "day")) && guard < 4000) {
+        guard += 1;
+        const weeksDiff = current.startOf("week").diff(startDate.startOf("week"), "week");
+        const matchesCycle = weeksDiff >= 0 && weeksDiff % recurrence.interval === 0;
+        const matchesDay = daysOfWeek.includes(current.isoWeekday());
+
+        if (matchesCycle && matchesDay && visit(current)) {
+          return count;
+        }
+
+        current = current.add(1, "day");
+      }
+      return count;
+    }
+
+    if (recurrence.frequency === "monthly") {
+      const targetDay = recurrence.dayOfMonth ?? startDate.date();
+      let currentMonth = startDate.startOf("month");
+      let guard = 0;
+
+      while ((currentMonth.isBefore(effectiveEnd, "month") || currentMonth.isSame(effectiveEnd, "month")) && guard < 240) {
+        guard += 1;
+        const candidate = currentMonth.date(targetDay);
+        const valid = candidate.month() === currentMonth.month() && (candidate.isAfter(startDate, "day") || candidate.isSame(startDate, "day"));
+
+        if (valid && visit(candidate)) {
+          return count;
+        }
+
+        currentMonth = currentMonth.add(recurrence.interval, "month");
+      }
+      return count;
+    }
+
+    const targetMonth = recurrence.monthOfYear ?? startDate.month() + 1;
+    const targetDay = recurrence.dayOfMonth ?? startDate.date();
+    let currentYear = startDate.startOf("year");
+    let guard = 0;
+
+    while ((currentYear.isBefore(effectiveEnd, "year") || currentYear.isSame(effectiveEnd, "year")) && guard < 120) {
+      guard += 1;
+      const candidate = currentYear.month(targetMonth - 1).date(targetDay);
+      const valid = candidate.month() === targetMonth - 1 && (candidate.isAfter(startDate, "day") || candidate.isSame(startDate, "day"));
+
+      if (valid && visit(candidate)) {
+        return count;
+      }
+
+      currentYear = currentYear.add(recurrence.interval, "year");
+    }
+
+    return count;
+  }
+
+  private getEffectiveEndDate(recurrence: RecurrenceRuleInput, stopDate: Dayjs): Dayjs {
+    const untilDate = recurrence.untilDate ? dayjs.utc(recurrence.untilDate).startOf("day") : null;
+    if (untilDate && untilDate.isBefore(stopDate, "day")) {
+      return untilDate;
+    }
+    return stopDate.startOf("day");
+  }
+
+  private getContextDate(value: unknown): Dayjs | null {
+    if (typeof value !== "string" || !value.trim()) {
+      return null;
+    }
+
+    const candidate = dayjs.utc(value).startOf("day");
+    return candidate.isValid() ? candidate : null;
+  }
+
+  private resolvePositiveInteger(value: unknown): number | null {
+    const candidate = Number(value);
+    if (!Number.isInteger(candidate) || candidate < 1) {
+      return null;
+    }
+    return candidate;
   }
 
   private normalizeExpression(expression: string): string {
