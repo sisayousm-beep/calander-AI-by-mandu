@@ -26,6 +26,17 @@ export class DatabaseService {
     this.logger.info("Database initialized", { dbFilePath: this.dbFilePath });
   }
 
+  close(): void {
+    if (!this.connection) {
+      return;
+    }
+
+    this.connection.pragma("optimize");
+    this.connection.close();
+    this.connection = null;
+    this.logger.info("Database connection closed", { dbFilePath: this.dbFilePath });
+  }
+
   get db(): Database.Database {
     if (!this.connection) {
       throw new Error("Database is not initialized.");

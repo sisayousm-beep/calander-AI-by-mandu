@@ -17,6 +17,7 @@ import { Logger } from "@main/utils/logger";
 
 let mainWindow: BrowserWindow | null = null;
 let logger: Logger | null = null;
+let databaseService: DatabaseService | null = null;
 
 function serializeError(error: unknown): Record<string, string> {
   if (error instanceof Error) {
@@ -47,7 +48,7 @@ async function bootstrap(): Promise<void> {
   registerProcessLogging(logger);
   logger.info("Application bootstrap started", { userDataPath });
 
-  const databaseService = new DatabaseService(userDataPath, logger);
+  databaseService = new DatabaseService(userDataPath, logger);
   databaseService.init();
 
   const settingsService = new SettingsService(databaseService, logger);
@@ -98,6 +99,11 @@ app.whenReady().then(async () => {
       mainWindow = createMainWindow(logger ?? undefined);
     }
   });
+});
+
+app.on("before-quit", () => {
+  logger?.info("Application before-quit");
+  databaseService?.close();
 });
 
 app.on("window-all-closed", () => {
