@@ -14,6 +14,7 @@ import { annotationInputSchema } from "@shared/schemas/annotation";
 import { eventInputSchema } from "@shared/schemas/event";
 import { formulaRuleInputSchema } from "@shared/schemas/formula";
 import { noteInputSchema } from "@shared/schemas/note";
+import { ZodError } from "zod";
 
 export type AppServices = {
   annotationService: AnnotationService;
@@ -30,13 +31,23 @@ export type AppServices = {
 };
 
 export function registerIpcHandlers(services: AppServices): void {
+  const toErrorMessage = (error: unknown): string => {
+    if (error instanceof ZodError) {
+      const messages = [...new Set(error.issues.map((issue) => issue.message).filter(Boolean))];
+      return messages.length > 0 ? messages.join("\n") : "입력값 검증에 실패했습니다.";
+    }
+
+    return error instanceof Error ? error.message : String(error);
+  };
+
   const handle = <T>(channel: string, callback: () => Promise<T> | T) => {
     ipcMain.handle(channel, async () => {
       try {
         return await callback();
       } catch (error) {
-        services.logger.error(`IPC failure: ${channel}`, { message: error instanceof Error ? error.message : String(error) });
-        throw error;
+        const message = toErrorMessage(error);
+        services.logger.error(`IPC failure: ${channel}`, { message });
+        throw error instanceof ZodError ? new Error(message) : error;
       }
     });
   };
@@ -46,8 +57,9 @@ export function registerIpcHandlers(services: AppServices): void {
       try {
         return await callback(payload);
       } catch (error) {
-        services.logger.error(`IPC failure: ${channel}`, { message: error instanceof Error ? error.message : String(error) });
-        throw error;
+        const message = toErrorMessage(error);
+        services.logger.error(`IPC failure: ${channel}`, { message });
+        throw error instanceof ZodError ? new Error(message) : error;
       }
     });
   };

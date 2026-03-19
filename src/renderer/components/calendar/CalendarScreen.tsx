@@ -10,6 +10,7 @@ import type { EventDetail, EventInput } from "@shared/schemas/event";
 import type { CalendarView, EventStatus } from "@shared/constants/enums";
 import { toDateKey, toMonthKey, toWeekKey, formatDateTime } from "@shared/utils/date";
 import { eventStatusToneClassMap } from "@shared/utils/eventStatus";
+import { normalizeRecurrenceInput } from "@shared/utils/recurrenceInput";
 import { useCalendarStore } from "@renderer/stores/useCalendarStore";
 import { waitForCalendarApi } from "@renderer/lib/calendarApi";
 import { useSettingsStore } from "@renderer/stores/useSettingsStore";
@@ -161,18 +162,15 @@ const buildPayload = (form: EventFormState, source: "manual" | "ai" = "manual"):
     .map((item) => item.trim())
     .filter(Boolean),
   noteIds: [],
-  recurrence: {
+  recurrence: normalizeRecurrenceInput({
     frequency: form.recurrenceFrequency,
-    interval: Number(form.recurrenceInterval || "1"),
-    daysOfWeek: form.recurrenceDaysOfWeek
-      .split(",")
-      .map((item) => Number(item.trim()))
-      .filter((item) => Number.isFinite(item)),
-    dayOfMonth: form.recurrenceDayOfMonth ? Number(form.recurrenceDayOfMonth) : null,
-    monthOfYear: form.recurrenceMonthOfYear ? Number(form.recurrenceMonthOfYear) : null,
-    untilDate: form.recurrenceUntilDate || null,
-    count: form.recurrenceCount ? Number(form.recurrenceCount) : null,
-  },
+    interval: form.recurrenceInterval,
+    daysOfWeek: form.recurrenceDaysOfWeek,
+    dayOfMonth: form.recurrenceDayOfMonth,
+    monthOfYear: form.recurrenceMonthOfYear,
+    untilDate: form.recurrenceUntilDate,
+    count: form.recurrenceCount,
+  }),
   timezone: "Asia/Seoul",
   source,
 });

@@ -3,16 +3,21 @@ import { eventStatuses, recurrenceFrequencies } from "@shared/constants/enums";
 import { normalizeEventStatus } from "@shared/utils/eventStatus";
 
 const eventStatusSchema = z.preprocess((value) => normalizeEventStatus(value), z.enum(eventStatuses));
+const recurrenceIntervalSchema = z.number().int().min(1, "반복 간격은 1 이상이어야 합니다.");
+const recurrenceDayOfWeekSchema = z.number().int().min(1, "반복 요일은 1~7 사이 숫자여야 합니다.").max(7, "반복 요일은 1~7 사이 숫자여야 합니다.");
+const recurrenceDayOfMonthSchema = z.number().int().min(1, "반복 날짜는 1~31 사이 숫자여야 합니다.").max(31, "반복 날짜는 1~31 사이 숫자여야 합니다.");
+const recurrenceMonthOfYearSchema = z.number().int().min(1, "반복 월은 1~12 사이 숫자여야 합니다.").max(12, "반복 월은 1~12 사이 숫자여야 합니다.");
+const recurrenceCountSchema = z.number().int().min(1, "반복 횟수는 1 이상이어야 합니다.");
 
 export const recurrenceRuleInputSchema = z
   .object({
     frequency: z.enum(recurrenceFrequencies).default("none"),
-    interval: z.number().int().min(1).default(1),
-    daysOfWeek: z.array(z.number().int().min(1).max(7)).default([]),
-    dayOfMonth: z.number().int().min(1).max(31).nullable().default(null),
-    monthOfYear: z.number().int().min(1).max(12).nullable().default(null),
+    interval: recurrenceIntervalSchema.default(1),
+    daysOfWeek: z.array(recurrenceDayOfWeekSchema).default([]),
+    dayOfMonth: recurrenceDayOfMonthSchema.nullable().default(null),
+    monthOfYear: recurrenceMonthOfYearSchema.nullable().default(null),
     untilDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().default(null),
-    count: z.number().int().min(1).nullable().default(null),
+    count: recurrenceCountSchema.nullable().default(null),
   })
   .superRefine((value, ctx) => {
     if (value.frequency === "weekly" && value.daysOfWeek.length === 0) {
